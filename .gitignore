@@ -1,0 +1,25 @@
+# Catkin and CMake build products
+**/.catkin_tools/
+**/build/
+**/devel/
+**/install/
+**/logs/
+
+# Runtime output
+output/
+*.bag
+*.bag.active
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Editor and local agent state
+.vscode/
+.idea/
+.agents/
+.codex/
+
+# Temporary files
+*.swp
+*~

@@ -1,0 +1,67 @@
+%YAML:1.0
+
+# VINS-Fusion configuration generated from Kalibr bag 183222.
+imu: 1
+num_of_cam: 2
+
+imu_topic: "/camera/imu"
+image0_topic: "/camera/infra1/image_rect_raw"
+image1_topic: "/camera/infra2/image_rect_raw"
+output_path: "/work/output/kalibr_183222/"
+
+cam0_calib: "left.yaml"
+cam1_calib: "right.yaml"
+image_width: 640
+image_height: 480
+
+# body_T_cam is the inverse of Kalibr T_cam_imu (T_imu_cam).
+# Values below are from d435i_kalibr_20260712_183222-camchain-imucam.yaml.
+estimate_extrinsic: 0
+body_T_cam0: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 0.9999888697987185, -0.003464114481898555,
+       -0.0032031530619515444, -0.002879941192295023,
+       0.003436361950156352, 0.999956861363021,
+       -0.008629416525120745, 0.006848147437303992,
+       0.003232908169049421, 0.00861831328467526,
+       0.9999576355930775, 0.016343186897741155, 0., 0., 0., 1. ]
+
+body_T_cam1: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: d
+   data: [ 0.9999861335742333, -0.0034790100972273788,
+       -0.003953371725387284, 0.04712087361445408,
+       0.0034404647269389113, 0.9999468864124903,
+       -0.009715325852945864, 0.007023501467930696,
+       0.003986961464372441, 0.00970158970012745,
+       0.9999449901347434, 0.016730059199989312, 0., 0., 0., 1. ]
+
+multiple_thread: 1
+max_cnt: 80
+min_dist: 30
+freq: 10
+F_threshold: 1.0
+show_track: 0
+flow_back: 1
+
+# Non-zero solver limits are required; missing keys disable optimization.
+max_solver_time: 0.025
+max_num_iterations: 6
+keyframe_parallax: 10.0 
+
+# Values from d435i_kalibr_20260712_183222-imu.yaml.
+acc_n: 0.001865
+gyr_n: 0.0018685
+acc_w: 0.0002
+gyr_w: 0.000004
+g_norm: 9.806
+
+# Kalibr: t_imu = t_cam + 0.002370744 s (cam0).
+estimate_td: 0
+td: 0.0023707443799577937
+load_previous_pose_graph: 0
+pose_graph_save_path: "/work/output/kalibr_183222/pose_graph/"
+save_image: 0
