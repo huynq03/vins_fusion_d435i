@@ -221,6 +221,28 @@ Nếu báo trùng tên container, không chạy `docker run` lần nữa. Dùng 
 
 Các bước này chỉ cần chạy khi cài lần đầu hoặc source thay đổi.
 
+Repository chỉ lưu source, config và công cụ build. Các thư mục sau không được push vì có thể tạo lại:
+
+```text
+catkin_ws/build/       catkin_ws/devel/       catkin_ws/logs/
+rs_ros_ws/build/       rs_ros_ws/devel/       rs_ros_ws/logs/
+third_party/librealsense/build/
+output/
+```
+
+Sau khi clone repository trên máy mới, thực hiện theo thứ tự:
+
+```text
+1. Build Docker image
+2. Tạo container và mount repository vào /work
+3. Build librealsense
+4. Build RealSense ROS driver
+5. Build VINS-Fusion
+6. Chạy camera rồi chạy VINS
+```
+
+`build`, `devel` và `logs` sẽ tự xuất hiện sau khi build. `output` sẽ xuất hiện khi chạy VINS hoặc có thể tạo bằng `mkdir -p`.
+
 ### 6.1 Build librealsense
 
 ```bash
