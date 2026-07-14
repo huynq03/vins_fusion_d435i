@@ -153,7 +153,23 @@ rosversion realsense2_camera
 
 Hai số version khác nhau là bình thường: một số thuộc SDK, một số thuộc ROS wrapper.
 
-## 4. Build Docker image
+## 4. Repository gốc và tài liệu tham khảo
+
+Project được xây dựng từ ba nguồn chính:
+
+| Repository | Vai trò trong project |
+|---|---|
+| [ethz-asl/kalibr](https://github.com/ethz-asl/kalibr) | Calib intrinsic, stereo extrinsic, camera-IMU extrinsic và time offset |
+| [engcang/VINS-application - Intel-D435i](https://github.com/engcang/VINS-application/tree/Intel-D435i) | Tham khảo cách cấu hình và chạy VINS với RealSense D435i |
+| [HKUST-Aerial-Robotics/VINS-Fusion](https://github.com/HKUST-Aerial-Robotics/VINS-Fusion) | Source thuật toán VINS-Fusion gốc |
+
+Kalibr được dùng để tạo bộ calibration local trong `bags/realsense_d435i_kalibr_183222/`. Các file `left.yaml`, `right.yaml`, extrinsic và time offset hiện tại lấy từ lần calibration này.
+
+Repository Engcang chỉ được dùng để đối chiếu cách triển khai D435i. Config Engcang không còn được dùng trong project.
+
+Source VINS-Fusion trong `catkin_ws/src/VINS-Fusion/` bắt đầu từ repository HKUST và đã được chỉnh sửa để phù hợp pipeline D435i hiện tại.
+
+## 5. Build Docker image
 
 Chạy trên host Jetson:
 
@@ -167,7 +183,7 @@ docker build \
 
 Image là môi trường chạy. Container là một phiên chạy của image.
 
-## 5. Tạo và mở container
+## 6. Tạo và mở container
 
 Tạo container lần đầu:
 
@@ -217,7 +233,7 @@ docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
 
 Nếu báo trùng tên container, không chạy `docker run` lần nữa. Dùng `docker start -ai vins_d435i_local`.
 
-## 6. Build source trong container
+## 7. Build source trong container
 
 Các bước này chỉ cần chạy khi cài lần đầu hoặc source thay đổi.
 
@@ -288,7 +304,7 @@ catkin config --extend /opt/ros/noetic --cmake-args -DCMAKE_BUILD_TYPE=Release
 catkin build -j2
 ```
 
-## 7. Chạy camera và VINS
+## 8. Chạy camera và VINS
 
 Chỉ cần ba terminal. `roslaunch` ở Terminal 1 sẽ tự bật ROS master nếu chưa có.
 
@@ -374,7 +390,7 @@ Xem position:
 rostopic echo /vins_estimator/odometry/pose/pose/position
 ```
 
-## 8. Lưu và vẽ odometry
+## 9. Lưu và vẽ odometry
 
 Lưu timestamp và position `x,y,z`:
 
@@ -408,7 +424,7 @@ output/kalibr_183222/odometry_xy_plot.png
 timestamp_ns, px, py, pz, qw, qx, qy, qz, vx, vy, vz
 ```
 
-## 9. Ghi rosbag
+## 10. Ghi rosbag
 
 Ghi dữ liệu camera và IMU:
 
@@ -430,7 +446,7 @@ rosbag record -O /work/bags/vins_result.bag \
   /vins_estimator/path
 ```
 
-## 10. Source workspace đúng cách
+## 11. Source workspace đúng cách
 
 Hai workspace được build độc lập. Mỗi terminal chỉ source workspace nó cần:
 
@@ -459,7 +475,7 @@ rospack find vins
 
 Nếu package không được tìm thấy, source lại đúng workspace rồi chạy `rospack profile`.
 
-## 11. Lỗi thường gặp
+## 12. Lỗi thường gặp
 
 ### `Resource not found: realsense2_camera`
 
@@ -500,7 +516,7 @@ Kiểm tra theo thứ tự:
 
 Tham số `freq` trong YAML hiện không giới hạn tần số xử lý vì source này không đọc giá trị đó.
 
-## 12. Dừng hệ thống
+## 13. Dừng hệ thống
 
 Nhấn `Ctrl+C` theo thứ tự:
 
