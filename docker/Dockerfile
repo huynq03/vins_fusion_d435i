@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     build-essential cmake pkg-config \
     python3-catkin-tools python3-rosdep python3-rosinstall python3-vcstool \
     python3-pip \
+    geographiclib-tools \
     libssl-dev libusb-1.0-0-dev libudev-dev \
     libgtk-3-dev libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev \
     libatlas-base-dev libeigen3-dev libgoogle-glog-dev libsuitesparse-dev libceres-dev \
@@ -19,6 +20,9 @@ RUN apt-get update && apt-get install -y \
     ros-noetic-cv-bridge \
     ros-noetic-image-transport \
     ros-noetic-message-filters \
+    ros-noetic-mavros \
+    ros-noetic-mavros-extras \
+    ros-noetic-mavros-msgs \
     ros-noetic-tf \
     ros-noetic-rviz \
     ros-noetic-rqt-image-view \
@@ -26,6 +30,8 @@ RUN apt-get update && apt-get install -y \
     ros-noetic-ddynamic-reconfigure \
     ros-noetic-diagnostic-updater \
     && rm -rf /var/lib/apt/lists/*
+
+RUN /opt/ros/noetic/lib/mavros/install_geographiclib_datasets.sh
 
 RUN rosdep init || true
 

@@ -23,6 +23,9 @@ VINS-Fusion                     Ghép stereo và IMU
   +-- /vins_estimator/odometry       Pose, velocity, angular velocity
   +-- /vins_estimator/path           Quỹ đạo
   +-- /work/output/.../vio.csv       Kết quả lưu tự động
+  |
+  v
+vins_px4_bridge -> MAVROS -> PX4 EKF2
 ```
 
 Ba tầng được tách riêng để khóa đúng phiên bản và build độc lập:
@@ -384,13 +387,141 @@ rostopic hz /camera/imu
 rostopic hz /vins_estimator/odometry
 ```
 
-Xem position:
+Xem đồng thời position và orientation:
+
+```bash
+rostopic echo /vins_estimator/odometry/pose/pose
+```
+
+Xem riêng position `x, y, z`:
 
 ```bash
 rostopic echo /vins_estimator/odometry/pose/pose/position
 ```
 
-## 9. Lưu và vẽ odometry
+Xem riêng orientation quaternion `x, y, z, w`:
+
+```bash
+rostopic echo /vins_estimator/odometry/pose/pose/orientation
+```
+
+## 9. Gửi odometry sang PX4
+
+Topic VINS hiện dùng:
+
+```text
+World: x phải, y tiến, z lên          (ENU: East, North, Up)
+Body:  x phải, y tiến, z lên          (RFU: Right, Forward, Up)
+```
+
+PX4 không nhận trực tiếp quy ước body RFU. Node `vins_px4_bridge` thực hiện:
+
+```text
+Body RFU -> ROS FLU (Forward, Left, Up)
+Quaternion, velocity và covariance -> đổi cùng hệ trục
+World ENU -> giữ nguyên
+Output -> /mavros/odometry/out
+```
+
+MAVROS tự đổi ENU/FLU sang NED/FRD của PX4. Không tự đổi `x,y,z` sang NED lần nữa.
+
+### 9.1 Kết nối MAVROS với PX4
+
+Sau khi sửa Dockerfile, build lại image và tạo lại container. Trên host, kiểm tra
+tên cổng serial trước khi chạy MAVROS:
+
+```bash
+ls -l /dev/ttyACM* /dev/ttyUSB* /dev/serial/by-id/* 2>/dev/null
+```
+
+- Cổng USB native của flight controller thường là `/dev/ttyACM0`.
+- Adapter USB-UART thường là `/dev/ttyUSB0`.
+- Ưu tiên `/dev/serial/by-id/...` vì tên này không đổi khi reboot hoặc cắm lại.
+
+Kết nối bằng cổng USB native của PX4:
+
+```bash
+source /opt/ros/noetic/setup.bash
+roslaunch mavros px4.launch fcu_url:=/dev/ttyACM0:921600
+```
+
+Nếu dùng UART, thay bằng thiết bị thực tế, ví dụ:
+
+```bash
+roslaunch mavros px4.launch fcu_url:=/dev/ttyUSB0:921600
+```
+
+CP2102 đang dùng trong project có đường dẫn ổn định:
+
+```bash
+roslaunch mavros px4.launch \
+  fcu_url:=/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0:921600
+```
+
+Nếu không có cả `/dev/ttyACM*` và `/dev/ttyUSB*`, kiểm tra `lsusb -t`. Thiết bị
+phải có driver như `cdc_acm`, `cp210x`, `ftdi_sio` hoặc `ch341`; trạng thái
+`Driver=usbfs` nghĩa là chưa có driver serial nên MAVROS chưa thể mở cổng.
+
+Container được tạo với `--privileged` và bind `/dev`, vì vậy cổng xuất hiện trên
+host cũng phải xuất hiện bên trong container. Nếu dùng UDP, thay `fcu_url` theo
+kết nối thực tế. Kiểm tra MAVROS:
+
+```bash
+rostopic echo -n1 /mavros/state
+```
+
+Trường `connected` phải là `true`.
+
+### 9.2 Chạy bridge VINS-PX4
+
+Mở terminal khác trong cùng container:
+
+```bash
+source /opt/ros/noetic/setup.bash
+source /work/catkin_ws/devel/setup.bash
+
+roslaunch vins vins_px4_bridge.launch
+```
+
+Kiểm tra dữ liệu gửi vào MAVROS:
+
+```bash
+rostopic hz /mavros/odometry/out
+rostopic echo -n1 /mavros/odometry/out
+```
+
+Trong MAVLink Console của QGroundControl:
+
+```text
+listener vehicle_visual_odometry
+```
+
+### 9.3 Cấu hình EKF2 trên PX4
+
+Các tham số dưới đây áp dụng cho PX4 1.14 trở lên:
+
+| Tham số | Giá trị khởi đầu | Ý nghĩa |
+|---|---:|---|
+| `EKF2_EV_CTRL` | `7` | Fuse position ngang, position dọc và velocity |
+| `EKF2_EV_CTRL` | `15` | Thêm yaw sau khi đã kiểm tra đúng orientation |
+| `EKF2_EV_NOISE_MD` | `0` | Dùng covariance từ message odometry |
+| `EKF2_EV_DELAY` | `0` rồi tune | Độ trễ vision, đơn vị ms |
+| `EKF2_EV_POS_X/Y/Z` | Theo vị trí lắp | Offset camera so với IMU PX4, hệ body FRD |
+| `EKF2_HGT_REF` | `3` nếu cần | Dùng external vision làm nguồn độ cao |
+
+Reboot PX4 sau khi đổi tham số. Với firmware cũ, tên tham số có thể khác.
+
+Trước khi arm, đặt thiết bị đứng yên và kiểm tra:
+
+1. Di chuyển sang phải: East tăng.
+2. Di chuyển về trước: North tăng.
+3. Di chuyển lên: altitude tăng, Down của PX4 giảm.
+4. Quay yaw phải/trái: heading đổi đúng chiều.
+5. `vehicle_visual_odometry` không nhảy pose hoặc timestamp.
+
+Chỉ bật bit yaw (`EKF2_EV_CTRL=15`) sau khi bốn kiểm tra hướng đều đúng.
+
+## 10. Lưu và vẽ odometry
 
 Lưu timestamp và position `x,y,z`:
 
@@ -424,7 +555,7 @@ output/kalibr_183222/odometry_xy_plot.png
 timestamp_ns, px, py, pz, qw, qx, qy, qz, vx, vy, vz
 ```
 
-## 10. Ghi rosbag
+## 11. Ghi rosbag
 
 Ghi dữ liệu camera và IMU:
 
@@ -446,7 +577,7 @@ rosbag record -O /work/bags/vins_result.bag \
   /vins_estimator/path
 ```
 
-## 11. Source workspace đúng cách
+## 12. Source workspace đúng cách
 
 Hai workspace được build độc lập. Mỗi terminal chỉ source workspace nó cần:
 
@@ -475,7 +606,7 @@ rospack find vins
 
 Nếu package không được tìm thấy, source lại đúng workspace rồi chạy `rospack profile`.
 
-## 12. Lỗi thường gặp
+## 13. Lỗi thường gặp
 
 ### `Resource not found: realsense2_camera`
 
@@ -516,7 +647,7 @@ Kiểm tra theo thứ tự:
 
 Tham số `freq` trong YAML hiện không giới hạn tần số xử lý vì source này không đọc giá trị đó.
 
-## 13. Dừng hệ thống
+## 14. Dừng hệ thống
 
 Nhấn `Ctrl+C` theo thứ tự:
 
@@ -529,3 +660,49 @@ Container vẫn được giữ để chạy lại bằng:
 ```bash
 docker start -ai vins_d435i_local
 ```
+
+
+
+
+lệnh chạy 
+cd ~/vins_fusion_d435i_local
+docker start vins_d435i_local
+
+
+docker exec -it vins_d435i_local bash
+
+bật cam 
+
+source /opt/ros/noetic/setup.bash
+source /work/rs_ros_ws/devel/setup.bash
+
+export PATH=/opt/librealsense/bin:$PATH
+export LD_LIBRARY_PATH=/work/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRARY_PATH
+
+roslaunch /work/bags/realsense_d435i_kalibr_183222/rs_camera.launch
+
+bật vins 
+
+source /opt/ros/noetic/setup.bash
+source /work/catkin_ws/devel/setup.bash
+
+mkdir -p /work/output/kalibr_183222/pose_graph
+
+rosrun vins vins_node \
+  /work/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
+
+Kết nối MAVROS với PX4
+
+source /opt/ros/noetic/setup.bash
+
+roslaunch mavros px4.launch \
+  fcu_url:=/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0:921600
+
+
+Gửi VINS Odometry sang PX4  
+source /opt/ros/noetic/setup.bash
+source /work/catkin_ws/devel/setup.bash
+
+roslaunch vins vins_px4_bridge.launch \
+  input_topic:=/vins_estimator/odometry \
+  output_topic:=/mavros/odometry/out
