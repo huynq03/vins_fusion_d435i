@@ -498,16 +498,30 @@ listener vehicle_visual_odometry
 
 ### 9.3 Cấu hình EKF2 trên PX4
 
-Các tham số dưới đây áp dụng cho PX4 1.14 trở lên:
+Profile của project dùng vision cho position X/Y và yaw, rangefinder cho Z:
 
-| Tham số | Giá trị khởi đầu | Ý nghĩa |
+| Tham số | Giá trị | Ý nghĩa |
 |---|---:|---|
-| `EKF2_EV_CTRL` | `7` | Fuse position ngang, position dọc và velocity |
-| `EKF2_EV_CTRL` | `15` | Thêm yaw sau khi đã kiểm tra đúng orientation |
+| `EKF2_EV_CTRL` | `9` | Vision horizontal position (bit 0) và yaw (bit 3) |
+| `EKF2_HGT_REF` | `2` | Rangefinder là height reference |
+| `EKF2_RNG_CTRL` | `2` | Luôn fuse rangefinder height |
 | `EKF2_EV_NOISE_MD` | `0` | Dùng covariance từ message odometry |
 | `EKF2_EV_DELAY` | `0` rồi tune | Độ trễ vision, đơn vị ms |
 | `EKF2_EV_POS_X/Y/Z` | Theo vị trí lắp | Offset camera so với IMU PX4, hệ body FRD |
-| `EKF2_HGT_REF` | `3` nếu cần | Dùng external vision làm nguồn độ cao |
+
+Thiết lập qua MAVROS:
+
+```bash
+rosrun mavros mavparam set EKF2_EV_CTRL 9
+rosrun mavros mavparam set EKF2_HGT_REF 2
+rosrun mavros mavparam set EKF2_RNG_CTRL 2
+rosrun mavros mavparam set EKF2_EV_NOISE_MD 0
+```
+
+Không dùng `EKF2_EV_CTRL=7` cho profile này vì nó bật vertical vision position
+và 3D vision velocity. PX4 1.14 không có bit riêng cho horizontal vision
+velocity; `EKF2_EV_CTRL=13` sẽ thêm toàn bộ velocity X/Y/Z và vì vậy VINS vẫn
+ảnh hưởng đến chuyển động theo Z.
 
 Reboot PX4 sau khi đổi tham số. Với firmware cũ, tên tham số có thể khác.
 
@@ -519,7 +533,9 @@ Trước khi arm, đặt thiết bị đứng yên và kiểm tra:
 4. Quay yaw phải/trái: heading đổi đúng chiều.
 5. `vehicle_visual_odometry` không nhảy pose hoặc timestamp.
 
-Chỉ bật bit yaw (`EKF2_EV_CTRL=15`) sau khi bốn kiểm tra hướng đều đúng.
+Với profile này, sau khi reboot cần thấy `cs_ev_pos`, `cs_ev_yaw` và
+`cs_rng_hgt` bật; `cs_ev_hgt` và `cs_ev_vel` phải tắt trong
+`estimator_status_flags`.
 
 ## 10. Lưu và vẽ odometry
 
@@ -664,14 +680,14 @@ docker start -ai vins_d435i_local
 
 
 
-lệnh chạy 
+# lệnh chạy 
 cd ~/vins_fusion_d435i_local
 docker start vins_d435i_local
 
 
 docker exec -it vins_d435i_local bash
 
-bật cam 
+# bật cam 
 
 source /opt/ros/noetic/setup.bash
 source /work/rs_ros_ws/devel/setup.bash
@@ -681,7 +697,7 @@ export LD_LIBRARY_PATH=/work/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRA
 
 roslaunch /work/bags/realsense_d435i_kalibr_183222/rs_camera.launch
 
-bật vins 
+# bật vins 
 
 source /opt/ros/noetic/setup.bash
 source /work/catkin_ws/devel/setup.bash
@@ -691,7 +707,7 @@ mkdir -p /work/output/kalibr_183222/pose_graph
 rosrun vins vins_node \
   /work/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
 
-Kết nối MAVROS với PX4
+# Kết nối MAVROS với PX4
 
 source /opt/ros/noetic/setup.bash
 
@@ -699,7 +715,7 @@ roslaunch mavros px4.launch \
   fcu_url:=/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0:921600
 
 
-Gửi VINS Odometry sang PX4  
+# Gửi VINS Odometry sang PX4  
 source /opt/ros/noetic/setup.bash
 source /work/catkin_ws/devel/setup.bash
 

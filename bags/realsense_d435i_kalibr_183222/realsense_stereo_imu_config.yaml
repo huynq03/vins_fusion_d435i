@@ -42,7 +42,7 @@ body_T_cam1: !!opencv-matrix
 multiple_thread: 1
 max_cnt: 80
 min_dist: 30
-freq: 10
+freq: 30
 F_threshold: 1.0
 show_track: 0
 flow_back: 1
