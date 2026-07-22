@@ -411,13 +411,13 @@ Topic VINS hiện dùng:
 
 ```text
 World: x phải, y tiến, z lên          (ENU: East, North, Up)
-Body:  x phải, y tiến, z lên          (RFU: Right, Forward, Up)
+Body:  x phải, y xuống, z tiến         (RDF: Right, Down, Forward)
 ```
 
 PX4 không nhận trực tiếp quy ước body RFU. Node `vins_px4_bridge` thực hiện:
 
 ```text
-Body RFU -> ROS FLU (Forward, Left, Up)
+Body RDF -> ROS FLU (Forward, Left, Up)
 Quaternion, velocity và covariance -> đổi cùng hệ trục
 World ENU -> giữ nguyên
 Output -> /mavros/odometry/out

@@ -20,12 +20,13 @@ class VinsPx4Bridge
         private_node_.param<std::string>("frame_id", frame_id_, "odom");
         private_node_.param<std::string>("child_frame_id", child_frame_id_, "base_link");
 
-        // Source body axes are right-forward-up (RFU). ROS body axes are
-        // forward-left-up (FLU). The world frame remains ENU.
-        flu_from_rfu_ << 0.0, 1.0, 0.0,
+        // Kalibr and VINS use the D435i optical/IMU body axes: right-down-forward
+        // (RDF). ROS and MAVROS expect forward-left-up (FLU). The VINS world
+        // frame remains ENU: right/east, forward/north, up.
+        flu_from_rdf_ << 0.0, 0.0, 1.0,
                         -1.0, 0.0, 0.0,
-                         0.0, 0.0, 1.0;
-        rfu_from_flu_ = Eigen::Quaterniond(flu_from_rfu_.transpose());
+                         0.0, -1.0, 0.0;
+        rdf_from_flu_ = Eigen::Quaterniond(flu_from_rdf_.transpose());
 
         publisher_ = node_.advertise<nav_msgs::Odometry>(output_topic_, 10);
         subscriber_ = node_.subscribe(input_topic_, 10, &VinsPx4Bridge::odometryCallback, this);
@@ -38,31 +39,31 @@ class VinsPx4Bridge
   private:
     void odometryCallback(const nav_msgs::OdometryConstPtr &message)
     {
-        Eigen::Quaterniond world_from_rfu(message->pose.pose.orientation.w,
+        Eigen::Quaterniond world_from_rdf(message->pose.pose.orientation.w,
                                           message->pose.pose.orientation.x,
                                           message->pose.pose.orientation.y,
                                           message->pose.pose.orientation.z);
-        const double quaternion_norm = world_from_rfu.norm();
+        const double quaternion_norm = world_from_rdf.norm();
         if (!std::isfinite(quaternion_norm) || quaternion_norm < 1e-9)
         {
             ROS_WARN_THROTTLE(1.0, "Dropping VINS odometry with an invalid orientation");
             return;
         }
 
-        world_from_rfu.normalize();
-        Eigen::Quaterniond world_from_flu = world_from_rfu * rfu_from_flu_;
+        world_from_rdf.normalize();
+        Eigen::Quaterniond world_from_flu = world_from_rdf * rdf_from_flu_;
         world_from_flu.normalize();
 
         const Eigen::Vector3d velocity_world(message->twist.twist.linear.x,
                                              message->twist.twist.linear.y,
                                              message->twist.twist.linear.z);
-        const Eigen::Vector3d angular_velocity_rfu(message->twist.twist.angular.x,
+        const Eigen::Vector3d angular_velocity_rdf(message->twist.twist.angular.x,
                                                    message->twist.twist.angular.y,
                                                    message->twist.twist.angular.z);
 
         const Eigen::Matrix3d flu_from_world = world_from_flu.toRotationMatrix().transpose();
         const Eigen::Vector3d velocity_flu = flu_from_world * velocity_world;
-        const Eigen::Vector3d angular_velocity_flu = flu_from_rfu_ * angular_velocity_rfu;
+        const Eigen::Vector3d angular_velocity_flu = flu_from_rdf_ * angular_velocity_rdf;
 
         nav_msgs::Odometry output = *message;
         output.header.frame_id = frame_id_;
@@ -84,7 +85,7 @@ class VinsPx4Bridge
         Eigen::Map<Matrix6dRowMajor> output_covariance(output.twist.covariance.data());
         Matrix6dRowMajor covariance_rotation = Matrix6dRowMajor::Zero();
         covariance_rotation.block<3, 3>(0, 0) = flu_from_world;
-        covariance_rotation.block<3, 3>(3, 3) = flu_from_rfu_;
+        covariance_rotation.block<3, 3>(3, 3) = flu_from_rdf_;
         output_covariance = covariance_rotation * input_covariance * covariance_rotation.transpose();
 
         publisher_.publish(output);
@@ -98,8 +99,8 @@ class VinsPx4Bridge
     std::string output_topic_;
     std::string frame_id_;
     std::string child_frame_id_;
-    Eigen::Matrix3d flu_from_rfu_;
-    Eigen::Quaterniond rfu_from_flu_;
+    Eigen::Matrix3d flu_from_rdf_;
+    Eigen::Quaterniond rdf_from_flu_;
 };
 } // namespace
 
