@@ -414,13 +414,13 @@ World: x phải, y tiến, z lên          (ENU: East, North, Up)
 Body:  x phải, y xuống, z tiến         (RDF: Right, Down, Forward)
 ```
 
-PX4 không nhận trực tiếp quy ước body RFU. Node `vins_px4_bridge` thực hiện:
+PX4 không nhận trực tiếp quy ước body RDF. Node `vins_px4_bridge` thực hiện:
 
 ```text
 Body RDF -> ROS FLU (Forward, Left, Up)
-Quaternion, velocity và covariance -> đổi cùng hệ trục
+Quaternion -> đổi sang body FLU
 World ENU -> giữ nguyên
-Output -> /mavros/odometry/out
+Output PoseStamped (position + orientation) -> /mavros/vision_pose/pose
 ```
 
 MAVROS tự đổi ENU/FLU sang NED/FRD của PX4. Không tự đổi `x,y,z` sang NED lần nữa.
@@ -486,8 +486,8 @@ roslaunch vins vins_px4_bridge.launch
 Kiểm tra dữ liệu gửi vào MAVROS:
 
 ```bash
-rostopic hz /mavros/odometry/out
-rostopic echo -n1 /mavros/odometry/out
+rostopic hz /mavros/vision_pose/pose
+rostopic echo -n1 /mavros/vision_pose/pose
 ```
 
 Trong MAVLink Console của QGroundControl:
@@ -498,24 +498,32 @@ listener vehicle_visual_odometry
 
 ### 9.3 Cấu hình EKF2 trên PX4
 
-Profile của project dùng vision cho position X/Y và yaw, rangefinder cho Z:
+Profile thận trọng của project dùng vision cho position X/Y, optical flow cho
+vận tốc ngang, compass cho yaw và rangefinder cho Z. Orientation vẫn được gửi
+trong `PoseStamped`, nhưng EKF2 không fuse vision yaw khi `EKF2_EV_CTRL=1`:
 
 | Tham số | Giá trị | Ý nghĩa |
 |---|---:|---|
-| `EKF2_EV_CTRL` | `9` | Vision horizontal position (bit 0) và yaw (bit 3) |
+| `EKF2_EV_CTRL` | `1` | Chỉ fuse vision horizontal position (bit 0) |
+| `EKF2_OF_CTRL` | `1` | Fuse optical flow cho chuyển động ngang |
+| `EKF2_MAG_TYPE` | `0` | Dùng compass theo chế độ tự động |
 | `EKF2_HGT_REF` | `2` | Rangefinder là height reference |
 | `EKF2_RNG_CTRL` | `2` | Luôn fuse rangefinder height |
-| `EKF2_EV_NOISE_MD` | `0` | Dùng covariance từ message odometry |
+| `EKF2_EV_NOISE_MD` | `1` | Dùng noise từ tham số vì PoseStamped không mang covariance |
+| `EKF2_EVP_NOISE` | `0.5` | Mức tin vision position ban đầu, tune bằng log |
 | `EKF2_EV_DELAY` | `0` rồi tune | Độ trễ vision, đơn vị ms |
 | `EKF2_EV_POS_X/Y/Z` | Theo vị trí lắp | Offset camera so với IMU PX4, hệ body FRD |
 
 Thiết lập qua MAVROS:
 
 ```bash
-rosrun mavros mavparam set EKF2_EV_CTRL 9
+rosrun mavros mavparam set EKF2_EV_CTRL 1
+rosrun mavros mavparam set EKF2_OF_CTRL 1
+rosrun mavros mavparam set EKF2_MAG_TYPE 0
 rosrun mavros mavparam set EKF2_HGT_REF 2
 rosrun mavros mavparam set EKF2_RNG_CTRL 2
-rosrun mavros mavparam set EKF2_EV_NOISE_MD 0
+rosrun mavros mavparam set EKF2_EV_NOISE_MD 1
+rosrun mavros mavparam set EKF2_EVP_NOISE 0.5
 ```
 
 Không dùng `EKF2_EV_CTRL=7` cho profile này vì nó bật vertical vision position
@@ -533,8 +541,8 @@ Trước khi arm, đặt thiết bị đứng yên và kiểm tra:
 4. Quay yaw phải/trái: heading đổi đúng chiều.
 5. `vehicle_visual_odometry` không nhảy pose hoặc timestamp.
 
-Với profile này, sau khi reboot cần thấy `cs_ev_pos`, `cs_ev_yaw` và
-`cs_rng_hgt` bật; `cs_ev_hgt` và `cs_ev_vel` phải tắt trong
+Với profile này, sau khi reboot cần thấy `cs_ev_pos`, `cs_opt_flow` và
+`cs_rng_hgt` bật; `cs_ev_yaw`, `cs_ev_hgt` và `cs_ev_vel` phải tắt trong
 `estimator_status_flags`.
 
 ## 10. Lưu và vẽ odometry
@@ -721,4 +729,4 @@ source /work/catkin_ws/devel/setup.bash
 
 roslaunch vins vins_px4_bridge.launch \
   input_topic:=/vins_estimator/odometry \
-  output_topic:=/mavros/odometry/out
+  output_topic:=/mavros/vision_pose/pose

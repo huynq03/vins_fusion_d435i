@@ -14,6 +14,11 @@ cam1_calib: "right.yaml"
 image_width: 640
 image_height: 480
 
+# White pixels may contain tracked features; black pixels are ignored.
+# The mask removes the airframe/propeller regions visible in the top corners.
+masking: 1
+mask_img_name: "mask_img.jpg"
+
 # body_T_cam is the inverse of Kalibr T_cam_imu (T_imu_cam).
 # Values below are from d435i_kalibr_20260712_183222-camchain-imucam.yaml.
 estimate_extrinsic: 0

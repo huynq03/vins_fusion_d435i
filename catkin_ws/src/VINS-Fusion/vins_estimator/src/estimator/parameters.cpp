@@ -9,6 +9,8 @@
 
 #include "parameters.h"
 
+#include <cstdlib>
+
 double INIT_DEPTH;
 double MIN_PARALLAX;
 double ACC_N, ACC_W;
@@ -38,6 +40,9 @@ int USE_IMU;
 int MULTIPLE_THREAD;
 map<int, Eigen::Vector3d> pts_gt;
 std::string IMAGE0_TOPIC, IMAGE1_TOPIC;
+int MASKING;
+std::string MASKING_PATH;
+cv::Mat MASKING_IMG;
 std::string FISHEYE_MASK;
 std::vector<std::string> CAM_NAMES;
 int MAX_CNT;
@@ -151,6 +156,25 @@ void readParameters(std::string config_file)
 
     int pn = config_file.find_last_of('/');
     std::string configPath = config_file.substr(0, pn);
+
+    MASKING = 0;
+    if (!fsSettings["masking"].empty())
+        MASKING = static_cast<int>(fsSettings["masking"]);
+    if (MASKING)
+    {
+        fsSettings["mask_img_name"] >> MASKING_PATH;
+        const std::string absolute_mask_path = configPath + "/" + MASKING_PATH;
+        MASKING_IMG = cv::imread(absolute_mask_path, cv::IMREAD_GRAYSCALE);
+        if (MASKING_IMG.empty())
+        {
+            ROS_ERROR_STREAM("Failed to load feature mask: " << absolute_mask_path);
+            std::exit(EXIT_FAILURE);
+        }
+        cv::threshold(MASKING_IMG, MASKING_IMG, 127, 255, cv::THRESH_BINARY);
+        ROS_INFO_STREAM("Loaded feature mask: " << absolute_mask_path << " ("
+                                                 << MASKING_IMG.cols << "x"
+                                                 << MASKING_IMG.rows << ")");
+    }
     
     std::string cam0Calib;
     fsSettings["cam0_calib"] >> cam0Calib;
@@ -188,6 +212,12 @@ void readParameters(std::string config_file)
     ROW = fsSettings["image_height"];
     COL = fsSettings["image_width"];
     ROS_INFO("ROW: %d COL: %d ", ROW, COL);
+    if (MASKING && (MASKING_IMG.rows != ROW || MASKING_IMG.cols != COL))
+    {
+        ROS_ERROR("Feature mask is %dx%d but input images are %dx%d",
+                  MASKING_IMG.cols, MASKING_IMG.rows, COL, ROW);
+        std::exit(EXIT_FAILURE);
+    }
 
     if(!USE_IMU)
     {

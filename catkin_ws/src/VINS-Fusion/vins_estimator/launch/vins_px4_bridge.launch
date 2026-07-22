@@ -1,13 +1,11 @@
 <launch>
   <arg name="input_topic" default="/vins_estimator/odometry"/>
-  <arg name="output_topic" default="/mavros/odometry/out"/>
-  <arg name="frame_id" default="odom"/>
-  <arg name="child_frame_id" default="base_link"/>
+  <arg name="output_topic" default="/mavros/vision_pose/pose"/>
+  <arg name="frame_id" default="map"/>
 
   <node pkg="vins" type="vins_px4_bridge" name="vins_px4_bridge" output="screen">
     <param name="input_topic" value="$(arg input_topic)"/>
     <param name="output_topic" value="$(arg output_topic)"/>
     <param name="frame_id" value="$(arg frame_id)"/>
-    <param name="child_frame_id" value="$(arg child_frame_id)"/>
   </node>
 </launch>
