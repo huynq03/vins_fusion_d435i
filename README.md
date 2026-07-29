@@ -309,7 +309,9 @@ catkin build -j2
 
 ## 8. Chạy camera và VINS
 
-Chỉ cần ba terminal. `roslaunch` ở Terminal 1 sẽ tự bật ROS master nếu chưa có.
+Chạy riêng VINS cần ba terminal. Pipeline đầy đủ sang PX4 và ghi CSV
+dùng sáu terminal. `roslaunch` ở Terminal 1 sẽ tự bật ROS master nếu
+chưa có.
 
 ### Terminal 1: Camera D435i
 
@@ -410,7 +412,7 @@ rostopic echo /vins_estimator/odometry/pose/pose/orientation
 Topic VINS hiện dùng:
 
 ```text
-World: x phải, y tiến, z lên          (ENU: East, North, Up)
+World: x/y nằm ngang, z lên; yaw ban đầu tùy ý (local ENU convention)
 Body:  x phải, y xuống, z tiến         (RDF: Right, Down, Forward)
 ```
 
@@ -419,11 +421,15 @@ PX4 không nhận trực tiếp quy ước body RDF. Node `vins_px4_bridge` th�
 ```text
 Body RDF -> ROS FLU (Forward, Left, Up)
 Quaternion -> đổi sang body FLU
-World ENU -> giữ nguyên
-Output PoseStamped (position + orientation) -> /mavros/vision_pose/pose
+World VINS -> giữ nguyên làm local frame có heading tùy ý
+Velocity world -> body FLU theo REP-147
+Output nav_msgs/Odometry -> /mavros/odometry/out
 ```
 
-MAVROS tự đổi ENU/FLU sang NED/FRD của PX4. Không tự đổi `x,y,z` sang NED lần nữa.
+Plugin odometry của MAVROS đổi ROS FLU sang FRD và gửi bằng MAVLink
+`ODOMETRY` với `frame_id=LOCAL_FRD`, `child_frame_id=BODY_FRD`. Nhờ
+`LOCAL_FRD`, EKF2 có thể align heading ban đầu của VINS; không gán nhầm
+world VINS thành NED tuyệt đối. Không tự đổi `x,y,z` sang NED lần nữa.
 
 ### 9.1 Kết nối MAVROS với PX4
 
@@ -486,30 +492,50 @@ roslaunch vins vins_px4_bridge.launch
 Kiểm tra dữ liệu gửi vào MAVROS:
 
 ```bash
-rostopic hz /mavros/vision_pose/pose
-rostopic echo -n1 /mavros/vision_pose/pose
+rostopic type /mavros/odometry/out
+rostopic info /mavros/odometry/out
+rostopic hz /mavros/odometry/out
+rostopic echo -n1 /mavros/odometry/out
+rosrun tf tf_echo odom_ned odom
+rosrun tf tf_echo base_link_frd base_link
 ```
+
+Kiểu topic phải là `nav_msgs/Odometry`, `frame_id` phải là `odom`,
+`child_frame_id` phải là `base_link`. `rostopic info` phải hiện publisher
+`/vins_px4_bridge` và subscriber của MAVROS.
+Hai lệnh `tf_echo` phải nhận được static transform do MAVROS cung cấp;
+nếu bridge báo `ODOM: Ex: ... frame does not exist` thì MAVROS chưa load đúng
+odometry plugin/TF.
 
 Trong MAVLink Console của QGroundControl:
 
 ```text
 listener vehicle_visual_odometry
+listener estimator_aid_src_ev_pos
+listener estimator_aid_src_ev_yaw
 ```
+
+Với pipeline `ODOMETRY` mới, `vehicle_visual_odometry` phải có
+`pose_frame: 2` (FRD), `velocity_frame: 3` (BODY_FRD), velocity hữu hạn và
+variance khác 0. Tuổi message phải đang tăng theo thời gian thực; giá trị
+`... seconds ago` lớn nghĩa là stream đã dừng, không phải EKF đang nhận live.
 
 ### 9.3 Cấu hình EKF2 trên PX4
 
-Profile thận trọng của project dùng vision cho position X/Y, optical flow cho
-vận tốc ngang, compass cho yaw và rangefinder cho Z. Orientation vẫn được gửi
-trong `PoseStamped`, nhưng EKF2 không fuse vision yaw khi `EKF2_EV_CTRL=1`:
+Profile bên dưới dùng vision cho position X/Y và yaw, optical flow cho
+vận tốc ngang, rangefinder cho Z. `ODOMETRY` có mang position, orientation,
+velocity và covariance; EKF2 chỉ fuse các trường được bật trong
+`EKF2_EV_CTRL`:
 
 | Tham số | Giá trị | Ý nghĩa |
 |---|---:|---|
-| `EKF2_EV_CTRL` | `1` | Chỉ fuse vision horizontal position (bit 0) |
+| `EKF2_EV_CTRL` | `9` | Fuse vision horizontal position (bit 0) và yaw (bit 3) |
 | `EKF2_OF_CTRL` | `1` | Fuse optical flow cho chuyển động ngang |
-| `EKF2_MAG_TYPE` | `0` | Dùng compass theo chế độ tự động |
+| `EKF2_MAG_TYPE` | Theo profile bay | Tránh để compass và EV yaw xung đột |
 | `EKF2_HGT_REF` | `2` | Rangefinder là height reference |
 | `EKF2_RNG_CTRL` | `2` | Luôn fuse rangefinder height |
-| `EKF2_EV_NOISE_MD` | `1` | Dùng noise từ tham số vì PoseStamped không mang covariance |
+| `EKF2_EV_NOISE_MD` | `0` | Dùng covariance trong MAVLink `ODOMETRY` |
+| `EKF2_EV_QMIN` | `0` | MAVROS ROS1 odometry plugin gửi quality bằng 0 |
 | `EKF2_EVP_NOISE` | `0.5` | Mức tin vision position ban đầu, tune bằng log |
 | `EKF2_EV_DELAY` | `0` rồi tune | Độ trễ vision, đơn vị ms |
 | `EKF2_EV_POS_X/Y/Z` | Theo vị trí lắp | Offset camera so với IMU PX4, hệ body FRD |
@@ -517,19 +543,18 @@ trong `PoseStamped`, nhưng EKF2 không fuse vision yaw khi `EKF2_EV_CTRL=1`:
 Thiết lập qua MAVROS:
 
 ```bash
-rosrun mavros mavparam set EKF2_EV_CTRL 1
+rosrun mavros mavparam set EKF2_EV_CTRL 9
 rosrun mavros mavparam set EKF2_OF_CTRL 1
-rosrun mavros mavparam set EKF2_MAG_TYPE 0
 rosrun mavros mavparam set EKF2_HGT_REF 2
 rosrun mavros mavparam set EKF2_RNG_CTRL 2
-rosrun mavros mavparam set EKF2_EV_NOISE_MD 1
+rosrun mavros mavparam set EKF2_EV_NOISE_MD 0
+rosrun mavros mavparam set EKF2_EV_QMIN 0
 rosrun mavros mavparam set EKF2_EVP_NOISE 0.5
 ```
 
-Không dùng `EKF2_EV_CTRL=7` cho profile này vì nó bật vertical vision position
-và 3D vision velocity. PX4 1.14 không có bit riêng cho horizontal vision
-velocity; `EKF2_EV_CTRL=13` sẽ thêm toàn bộ velocity X/Y/Z và vì vậy VINS vẫn
-ảnh hưởng đến chuyển động theo Z.
+Nếu chỉ muốn fuse position, dùng `EKF2_EV_CTRL=1`. `EKF2_EV_CTRL=13`
+thêm toàn bộ velocity X/Y/Z; chỉ bật sau khi đã xác minh velocity frame,
+delay và innovation trong flight log.
 
 Reboot PX4 sau khi đổi tham số. Với firmware cũ, tên tham số có thể khác.
 
@@ -541,21 +566,31 @@ Trước khi arm, đặt thiết bị đứng yên và kiểm tra:
 4. Quay yaw phải/trái: heading đổi đúng chiều.
 5. `vehicle_visual_odometry` không nhảy pose hoặc timestamp.
 
-Với profile này, sau khi reboot cần thấy `cs_ev_pos`, `cs_opt_flow` và
-`cs_rng_hgt` bật; `cs_ev_yaw`, `cs_ev_hgt` và `cs_ev_vel` phải tắt trong
-`estimator_status_flags`.
+Với profile `EKF2_EV_CTRL=9`, sau khi reboot cần thấy `cs_ev_pos` và
+`cs_ev_yaw` bật; `cs_ev_hgt` và `cs_ev_vel` phải tắt. Kiểm tra thêm
+`estimator_aid_src_ev_pos` và `estimator_aid_src_ev_yaw`: `fusion_enabled`,
+`fused` phải là `true`, `innovation_rejected` phải là `false`.
 
 ## 10. Lưu và vẽ odometry
 
 Lưu timestamp và position `x,y,z`:
 
 ```bash
+source /opt/ros/noetic/setup.bash
+mkdir -p /work/output/kalibr_183222
+
 rostopic echo -p \
   /vins_estimator/odometry/pose/pose/position \
   > /work/output/kalibr_183222/odometry_xyz.csv
 ```
 
-Nhấn `Ctrl+C` để dừng ghi.
+Giữ terminal này chạy trong thời gian cần đo và nhấn `Ctrl+C` để
+dừng ghi. Kiểm tra file ngay trong container:
+
+```bash
+head /work/output/kalibr_183222/odometry_xyz.csv
+tail /work/output/kalibr_183222/odometry_xyz.csv
+```
 
 Thoát ra host Jetson rồi vẽ position theo thời gian và quỹ đạo X-Y:
 
@@ -685,18 +720,46 @@ Container vẫn được giữ để chạy lại bằng:
 docker start -ai vins_d435i_local
 ```
 
+## 15. Lệnh chạy nhanh toàn bộ pipeline
 
+Có thể mở tự động bốn terminal Camera, VINS, MAVROS và bridge bằng script trên
+host Jetson:
 
+```bash
+cd ~/vins_fusion_d435i_local
+./scripts/run_vins_px4_4_terminals.sh
+```
 
-# lệnh chạy 
+Script tự khởi động container và một `roscore` độc lập để việc restart camera
+không làm mất ROS master. Nếu dùng USB native của PX4:
+
+```bash
+./scripts/run_vins_px4_4_terminals.sh \
+  --fcu-url /dev/ttyACM0:921600
+```
+
+Chỉ dùng reset camera khi cần khôi phục sau lỗi USB:
+
+```bash
+./scripts/run_vins_px4_4_terminals.sh --initial-reset
+```
+
+Trên host Jetson, khởi động container một lần:
+
+```bash
 cd ~/vins_fusion_d435i_local
 docker start vins_d435i_local
+```
 
+Sau đó mở các terminal riêng bằng lệnh:
 
+```bash
 docker exec -it vins_d435i_local bash
+```
 
-# bật cam 
+### Terminal 1: Camera D435i
 
+```bash
 source /opt/ros/noetic/setup.bash
 source /work/rs_ros_ws/devel/setup.bash
 
@@ -704,9 +767,13 @@ export PATH=/opt/librealsense/bin:$PATH
 export LD_LIBRARY_PATH=/work/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRARY_PATH
 
 roslaunch /work/bags/realsense_d435i_kalibr_183222/rs_camera.launch
+```
 
-# bật vins 
+### Terminal 2: VINS-Fusion
 
+Chờ camera đã publish image và IMU rồi chạy:
+
+```bash
 source /opt/ros/noetic/setup.bash
 source /work/catkin_ws/devel/setup.bash
 
@@ -714,19 +781,72 @@ mkdir -p /work/output/kalibr_183222/pose_graph
 
 rosrun vins vins_node \
   /work/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
+```
 
-# Kết nối MAVROS với PX4
+### Terminal 3: MAVROS kết nối PX4
 
+```bash
 source /opt/ros/noetic/setup.bash
 
 roslaunch mavros px4.launch \
   fcu_url:=/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0:921600
+```
 
+Nếu flight controller dùng cổng khác, thay `fcu_url` bằng
+`/dev/ttyACM0:921600` hoặc thiết bị thực tế.
 
-# Gửi VINS Odometry sang PX4  
+### Terminal 4: Bridge MAVLink ODOMETRY
+
+```bash
 source /opt/ros/noetic/setup.bash
 source /work/catkin_ws/devel/setup.bash
 
 roslaunch vins vins_px4_bridge.launch \
   input_topic:=/vins_estimator/odometry \
-  output_topic:=/mavros/vision_pose/pose
+  output_topic:=/mavros/odometry/out \
+  parent_frame_id:=odom \
+  child_frame_id:=base_link
+```
+
+### Terminal 5: Kiểm tra pipeline
+
+```bash
+source /opt/ros/noetic/setup.bash
+
+rostopic echo -n1 /mavros/state
+rostopic hz /vins_estimator/odometry
+rostopic info /mavros/odometry/out
+rostopic hz /mavros/odometry/out
+rostopic echo -n1 /mavros/odometry/out
+```
+
+### Terminal 6: Lưu position VINS ra CSV
+
+```bash
+source /opt/ros/noetic/setup.bash
+mkdir -p /work/output/kalibr_183222
+
+rostopic echo -p \
+  /vins_estimator/odometry/pose/pose/position \
+  > /work/output/kalibr_183222/odometry_xyz.csv
+```
+
+Nhấn `Ctrl+C` để dừng ghi. File trên host là:
+
+```text
+output/kalibr_183222/odometry_xyz.csv
+```
+
+
+
+# Chạy trên host Jetson:
+cd ~/vins_fusion_d435i_local
+./scripts/run_vins_px4_4_terminals.sh
+
+
+# Nếu cần reset D435i một lần khi khởi động:
+./scripts/run_vins_px4_4_terminals.sh --initial-reset
+
+
+# Xem lệnh mà không thực sự chạy:
+./scripts/run_vins_px4_4_terminals.sh --dry-run

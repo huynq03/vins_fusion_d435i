@@ -45,17 +45,17 @@ body_T_cam1: !!opencv-matrix
        0.9999449901347434, 0.016730059199989312, 0., 0., 0., 1. ]
 
 multiple_thread: 1
-max_cnt: 80
-min_dist: 30
+max_cnt: 60
+min_dist: 35
 freq: 30
 F_threshold: 1.0
 show_track: 0
-flow_back: 1
+flow_back: 0
 
 # Non-zero solver limits are required; missing keys disable optimization.
-max_solver_time: 0.025
-max_num_iterations: 6
-keyframe_parallax: 10.0 
+max_solver_time: 0.02
+max_num_iterations: 5
+keyframe_parallax: 12.0 
 
 # Values from d435i_kalibr_20260712_183222-imu.yaml.
 acc_n: 0.001865
