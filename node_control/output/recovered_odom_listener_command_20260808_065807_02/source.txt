@@ -1,1 +1,0 @@
-/work/node_control/odom_listener_command.csv
