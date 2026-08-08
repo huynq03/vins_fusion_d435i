@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     git curl ca-certificates wget \
     build-essential cmake pkg-config \
     python3-catkin-tools python3-rosdep python3-rosinstall python3-vcstool \
-    python3-pip \
+    python3-pip python3-matplotlib \
     geographiclib-tools \
     libssl-dev libusb-1.0-0-dev libudev-dev \
     libgtk-3-dev libglfw3-dev libgl1-mesa-dev libglu1-mesa-dev \

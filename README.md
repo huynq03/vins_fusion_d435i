@@ -850,3 +850,17 @@ cd ~/vins_fusion_d435i_local
 
 # Xem lệnh mà không thực sự chạy:
 ./scripts/run_vins_px4_4_terminals.sh --dry-run
+
+
+
+
+cd /work/node_control
+catkin build node_control
+source devel/setup.bash
+
+
+
+source /opt/ros/noetic/setup.bash
+source /work/node_control/devel/setup.bash
+
+rosrun node_control node_control.py

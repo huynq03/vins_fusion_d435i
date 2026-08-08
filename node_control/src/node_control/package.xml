@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>node_control</name>
+  <version>0.0.1</version>
+  <description>PX4 local-position control node through MAVROS.</description>
+
+  <maintainer email="pi5air@example.com">pi5air</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+  <depend>mavros_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rospy</depend>
+
+  <export />
+</package>
