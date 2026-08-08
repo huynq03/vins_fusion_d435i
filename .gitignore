@@ -6,7 +6,7 @@
 **/logs/
 
 # Runtime output
-output/
+
 *.bag
 *.bag.active
 
@@ -23,3 +23,10 @@ __pycache__/
 # Temporary files
 *.swp
 *~
+output/extrinsic_parameter.csv
+output/vio.csv
+output/kalibr_183222/extrinsic_parameter.csv
+output/kalibr_183222/odometry_xy_plot.png
+output/kalibr_183222/odometry_xyz_plot.png
+output/kalibr_183222/odometry_xyz.csv
+output/kalibr_183222/vio.csv
