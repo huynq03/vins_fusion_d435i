@@ -407,6 +407,51 @@ Xem riêng orientation quaternion `x, y, z, w`:
 rostopic echo /vins_estimator/odometry/pose/pose/orientation
 ```
 
+### Cách xem ROS topic (ROS 1)
+
+Mở một terminal khác trong container, sau đó nạp ROS và workspace tương ứng:
+
+```bash
+source /opt/ros/noetic/setup.bash
+source /work/catkin_ws/devel/setup.bash
+```
+
+Các lệnh kiểm tra cơ bản:
+
+```bash
+# Liệt kê toàn bộ topic đang có
+rostopic list
+
+# Lọc các topic liên quan camera, VINS và MAVROS
+rostopic list | grep -E 'camera|vins|mavros'
+
+# Xem kiểu message, publisher và subscriber của một topic
+rostopic info /vins_estimator/odometry
+
+# Xem tần số publish; Ctrl+C để dừng
+rostopic hz /vins_estimator/odometry
+
+# Xem một message rồi tự thoát
+rostopic echo -n1 /vins_estimator/odometry
+
+# In liên tục message; Ctrl+C để dừng
+rostopic echo /vins_estimator/odometry
+```
+
+Với PX4/MAVROS, kiểm tra kết nối, odometry PX4 và setpoint của control node:
+
+```bash
+rostopic echo -n1 /mavros/state
+rostopic info /mavros/local_position/odom
+rostopic hz /mavros/local_position/odom
+rostopic echo -n1 /mavros/local_position/odom
+rostopic hz /mavros/setpoint_position/local
+```
+
+`/mavros/state` phải có `connected: True`. Nếu `rostopic info` báo
+`Publisher count: 0`, topic chưa có nguồn dữ liệu; kiểm tra node/launch cung
+cấp topic đó trước.
+
 ## 9. Gửi odometry sang PX4
 
 Topic VINS hiện dùng:
