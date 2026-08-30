@@ -22,7 +22,7 @@ VINS-Fusion                     Ghép stereo và IMU
   |
   +-- /vins_estimator/odometry       Pose, velocity, angular velocity
   +-- /vins_estimator/path           Quỹ đạo
-  +-- /work/output/.../vio.csv       Kết quả lưu tự động
+  +-- /home/hann/vins_fusion_d435i_local/output/.../vio.csv       Kết quả lưu tự động
   |
   v
 vins_px4_bridge -> MAVROS -> PX4 EKF2
@@ -101,7 +101,7 @@ Driver này link với `librealsense2.so` được cài tại `/opt/librealsense
 - catkin tools và các package ROS cần thiết.
 - RViz và công cụ kiểm tra topic.
 
-Dockerfile không copy source vào image và không tự build ba workspace. Toàn bộ project được mount từ host vào `/work`, vì vậy source và output vẫn nằm trên Jetson sau khi container dừng.
+Dockerfile không copy source vào image và không tự build ba workspace. Toàn bộ project được mount từ host vào `/home/hann/vins_fusion_d435i_local`, vì vậy source và output vẫn nằm trên Jetson sau khi container dừng.
 
 Không cài `ros-noetic-librealsense2` hoặc `ros-noetic-realsense2-camera` từ apt. Project dùng bản build source để tránh xung đột phiên bản và lỗi IMU.
 
@@ -116,7 +116,7 @@ Không cài `ros-noetic-librealsense2` hoặc `ros-noetic-realsense2-camera` t�
 | `rosdep init` | Khởi tạo công cụ cài dependency ROS |
 | `mkdir /opt/...` | Chuẩn bị nơi cài SDK và workspace |
 | Ghi vào `.bashrc` | Nạp ROS và biến môi trường khi mở shell |
-| `WORKDIR /work` | Đặt project mount làm thư mục làm việc |
+| `WORKDIR /home/hann/vins_fusion_d435i_local` | Đặt project mount làm thư mục làm việc |
 | `CMD ["/bin/bash"]` | Mở Bash khi container khởi động |
 
 ### `output`
@@ -200,8 +200,8 @@ docker run -it \
   --privileged \
   -v /dev:/dev \
   -v /run/udev:/run/udev:ro \
-  -v "$PWD":/work \
-  -w /work \
+  -v "$PWD":/home/hann/vins_fusion_d435i_local \
+  -w /home/hann/vins_fusion_d435i_local \
   vins-fusion-d435i-local:noetic \
   bash
 ```
@@ -214,7 +214,7 @@ docker run -it \
 | `--ipc=host` | Dùng chung shared memory |
 | `--privileged` | Cho phép truy cập thiết bị USB |
 | `-v /dev:/dev` | Đưa thiết bị camera vào container |
-| `-v "$PWD":/work` | Mount project host vào `/work` |
+| `-v "$PWD":/home/hann/vins_fusion_d435i_local` | Mount project host vào `/home/hann/vins_fusion_d435i_local` |
 
 Mở lại container:
 
@@ -253,7 +253,7 @@ Sau khi clone repository trên máy mới, thực hiện theo thứ tự:
 
 ```text
 1. Build Docker image
-2. Tạo container và mount repository vào /work
+2. Tạo container và mount repository vào /home/hann/vins_fusion_d435i_local
 3. Build librealsense
 4. Build RealSense ROS driver
 5. Build VINS-Fusion
@@ -265,7 +265,7 @@ Sau khi clone repository trên máy mới, thực hiện theo thứ tự:
 ### 6.1 Build librealsense
 
 ```bash
-cd /work/third_party/librealsense
+cd /home/hann/vins_fusion_d435i_local/third_party/librealsense
 mkdir -p build
 cd build
 
@@ -292,7 +292,7 @@ export PATH=/opt/librealsense/bin:$PATH
 export LD_LIBRARY_PATH=/opt/librealsense/lib:$LD_LIBRARY_PATH
 export CMAKE_PREFIX_PATH=/opt/librealsense:/opt/ros/noetic:$CMAKE_PREFIX_PATH
 
-cd /work/rs_ros_ws
+cd /home/hann/vins_fusion_d435i_local/rs_ros_ws
 catkin config --extend /opt/ros/noetic --cmake-args -DCMAKE_BUILD_TYPE=Release
 catkin build -j2
 ```
@@ -302,7 +302,7 @@ catkin build -j2
 ```bash
 source /opt/ros/noetic/setup.bash
 
-cd /work/catkin_ws
+cd /home/hann/vins_fusion_d435i_local/catkin_ws
 catkin config --extend /opt/ros/noetic --cmake-args -DCMAKE_BUILD_TYPE=Release
 catkin build -j2
 ```
@@ -312,6 +312,51 @@ catkin build -j2
 Chạy riêng VINS cần ba terminal. Pipeline đầy đủ sang PX4 và ghi CSV
 dùng sáu terminal. `roslaunch` ở Terminal 1 sẽ tự bật ROS master nếu
 chưa có.
+
+### Mở nhanh camera và VINS bằng hai terminal
+
+Nếu đang ở **bên trong container**, chỉ cần chạy một lệnh sau. Camera chạy nền,
+VINS chạy trong terminal hiện tại; nhấn `Ctrl+C` sẽ dừng cả camera và
+VINS-Fusion:
+
+```bash
+cd /home/hann/vins_fusion_d435i_local
+./scripts/run_camera_vins_2_terminals.sh
+```
+
+Khi chạy trên host Jetson có desktop, dùng cùng lệnh sau để script mở hai
+terminal riêng:
+
+```bash
+cd ~/vins_fusion_d435i_local
+./scripts/run_camera_vins_2_terminals.sh
+```
+
+Khi chạy từ desktop, script tự mở hai cửa sổ `gnome-terminal`, mỗi cửa sổ dùng
+`docker exec -it vins_d435i_local bash`: một cửa sổ chạy camera D435i, cửa sổ
+còn lại chờ đủ image IR và IMU rồi chạy VINS-Fusion. Để chỉ xem lệnh mà không
+mở terminal:
+
+```bash
+./scripts/run_camera_vins_2_terminals.sh --dry-run
+```
+
+Khi chạy qua SSH, không thể mở hai cửa sổ terminal từ script. Mở **hai SSH
+terminal** đến Jetson, rồi chạy các lệnh foreground sau. Giữ cả hai terminal
+đang chạy để xem log; nhấn `Ctrl+C` trong terminal tương ứng để dừng riêng
+camera hoặc VINS-Fusion:
+
+```bash
+# SSH terminal 1: camera D435i
+cd ~/vins_fusion_d435i_local
+./scripts/run_camera_vins_2_terminals.sh --camera
+```
+
+```bash
+# SSH terminal 2: VINS-Fusion
+cd ~/vins_fusion_d435i_local
+./scripts/run_camera_vins_2_terminals.sh --vins
+```
 
 ### Terminal 1: Camera D435i
 
@@ -323,14 +368,14 @@ Trong container:
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/rs_ros_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/setup.bash
 
 export PATH=/opt/librealsense/bin:$PATH
-export LD_LIBRARY_PATH=/work/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRARY_PATH
 
 rospack find realsense2_camera
 
-roslaunch /work/bags/realsense_d435i_kalibr_183222/rs_camera.launch
+roslaunch /home/hann/vins_fusion_d435i_local/bags/realsense_d435i_kalibr_183222/rs_camera.launch
 ```
 
 Launch này bật:
@@ -356,12 +401,12 @@ Trong container:
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
 
-mkdir -p /work/output/kalibr_183222/pose_graph
+mkdir -p /home/hann/vins_fusion_d435i_local/output/kalibr_183222/pose_graph
 
 rosrun vins vins_node \
-  /work/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
+  /home/hann/vins_fusion_d435i_local/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
 ```
 
 Config này dùng calibration Kalibr local:
@@ -369,7 +414,7 @@ Config này dùng calibration Kalibr local:
 - Hai camera IR và một IMU.
 - Extrinsic camera-IMU cố định: `estimate_extrinsic: 0`.
 - Time offset cố định: `estimate_td: 0`.
-- Kết quả lưu vào `/work/output/kalibr_183222/`.
+- Kết quả lưu vào `/home/hann/vins_fusion_d435i_local/output/kalibr_183222/`.
 
 ### Terminal 3: Kiểm tra
 
@@ -381,7 +426,7 @@ Trong container:
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
 
 rostopic hz /camera/infra1/image_rect_raw
 rostopic hz /camera/infra2/image_rect_raw
@@ -413,7 +458,7 @@ Mở một terminal khác trong container, sau đó nạp ROS và workspace tư�
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
 ```
 
 Các lệnh kiểm tra cơ bản:
@@ -529,7 +574,7 @@ Mở terminal khác trong cùng container:
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
 
 roslaunch vins vins_px4_bridge.launch
 ```
@@ -622,19 +667,19 @@ Lưu timestamp và position `x,y,z`:
 
 ```bash
 source /opt/ros/noetic/setup.bash
-mkdir -p /work/output/kalibr_183222
+mkdir -p /home/hann/vins_fusion_d435i_local/output/kalibr_183222
 
 rostopic echo -p \
   /vins_estimator/odometry/pose/pose/position \
-  > /work/output/kalibr_183222/odometry_xyz.csv
+  > /home/hann/vins_fusion_d435i_local/output/kalibr_183222/odometry_xyz.csv
 ```
 
 Giữ terminal này chạy trong thời gian cần đo và nhấn `Ctrl+C` để
 dừng ghi. Kiểm tra file ngay trong container:
 
 ```bash
-head /work/output/kalibr_183222/odometry_xyz.csv
-tail /work/output/kalibr_183222/odometry_xyz.csv
+head /home/hann/vins_fusion_d435i_local/output/kalibr_183222/odometry_xyz.csv
+tail /home/hann/vins_fusion_d435i_local/output/kalibr_183222/odometry_xyz.csv
 ```
 
 Thoát ra host Jetson rồi vẽ position theo thời gian và quỹ đạo X-Y:
@@ -664,7 +709,7 @@ timestamp_ns, px, py, pz, qw, qx, qy, qz, vx, vy, vz
 Ghi dữ liệu camera và IMU:
 
 ```bash
-rosbag record -O /work/bags/d435i_stereo_imu.bag \
+rosbag record -O /home/hann/vins_fusion_d435i_local/bags/d435i_stereo_imu.bag \
   /camera/infra1/image_rect_raw \
   /camera/infra2/image_rect_raw \
   /camera/imu
@@ -673,7 +718,7 @@ rosbag record -O /work/bags/d435i_stereo_imu.bag \
 Ghi thêm kết quả VINS:
 
 ```bash
-rosbag record -O /work/bags/vins_result.bag \
+rosbag record -O /home/hann/vins_fusion_d435i_local/bags/vins_result.bag \
   /camera/infra1/image_rect_raw \
   /camera/infra2/image_rect_raw \
   /camera/imu \
@@ -689,14 +734,14 @@ Camera:
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/rs_ros_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/setup.bash
 ```
 
 VINS:
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
 ```
 
 Không cần source cả hai trong cùng terminal để chạy pipeline. Các node trao đổi qua ROS master.
@@ -716,7 +761,7 @@ Nếu package không được tìm thấy, source lại đúng workspace rồi c
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/rs_ros_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/setup.bash
 rospack profile
 rospack find realsense2_camera
 ```
@@ -724,8 +769,8 @@ rospack find realsense2_camera
 ### Không tìm thấy `librealsense2_camera.so`
 
 ```bash
-export LD_LIBRARY_PATH=/work/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRARY_PATH
-ls -l /work/rs_ros_ws/devel/lib/librealsense2_camera.so
+export LD_LIBRARY_PATH=/home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRARY_PATH
+ls -l /home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/lib/librealsense2_camera.so
 ldconfig -p | grep librealsense
 ```
 
@@ -806,12 +851,12 @@ docker exec -it vins_d435i_local bash
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/rs_ros_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/setup.bash
 
 export PATH=/opt/librealsense/bin:$PATH
-export LD_LIBRARY_PATH=/work/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/lib:/opt/librealsense/lib:$LD_LIBRARY_PATH
 
-roslaunch /work/bags/realsense_d435i_kalibr_183222/rs_camera.launch
+roslaunch /home/hann/vins_fusion_d435i_local/bags/realsense_d435i_kalibr_183222/rs_camera.launch
 ```
 
 ### Terminal 2: VINS-Fusion
@@ -820,12 +865,12 @@ Chờ camera đã publish image và IMU rồi chạy:
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
 
-mkdir -p /work/output/kalibr_183222/pose_graph
+mkdir -p /home/hann/vins_fusion_d435i_local/output/kalibr_183222/pose_graph
 
 rosrun vins vins_node \
-  /work/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
+  /home/hann/vins_fusion_d435i_local/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
 ```
 
 ### Terminal 3: MAVROS kết nối PX4
@@ -844,7 +889,7 @@ Nếu flight controller dùng cổng khác, thay `fcu_url` bằng
 
 ```bash
 source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
 
 roslaunch vins vins_px4_bridge.launch \
   input_topic:=/vins_estimator/odometry \
@@ -869,11 +914,11 @@ rostopic echo -n1 /mavros/odometry/out
 
 ```bash
 source /opt/ros/noetic/setup.bash
-mkdir -p /work/output/kalibr_183222
+mkdir -p /home/hann/vins_fusion_d435i_local/output/kalibr_183222
 
 rostopic echo -p \
   /vins_estimator/odometry/pose/pose/position \
-  > /work/output/kalibr_183222/odometry_xyz.csv
+  > /home/hann/vins_fusion_d435i_local/output/kalibr_183222/odometry_xyz.csv
 ```
 
 Nhấn `Ctrl+C` để dừng ghi. File trên host là:
@@ -899,13 +944,13 @@ cd ~/vins_fusion_d435i_local
 
 
 
-cd /work/node_control
+cd /home/hann/vins_fusion_d435i_local/node_control
 catkin build node_control
 source devel/setup.bash
 
 
 
 source /opt/ros/noetic/setup.bash
-source /work/node_control/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/node_control/devel/setup.bash
 
 rosrun node_control node_control.py

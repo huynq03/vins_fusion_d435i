@@ -63,16 +63,16 @@ while (($# > 0)); do
 done
 
 CAMERA_COMMAND="source /opt/ros/noetic/setup.bash
-source /work/rs_ros_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/setup.bash
 export PATH=/opt/librealsense/bin:\$PATH
-export LD_LIBRARY_PATH=/work/rs_ros_ws/devel/lib:/opt/librealsense/lib:\$LD_LIBRARY_PATH
-roslaunch /work/bags/realsense_d435i_kalibr_183222/rs_camera.launch initial_reset:=${CAMERA_INITIAL_RESET}
+export LD_LIBRARY_PATH=/home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/lib:/opt/librealsense/lib:\$LD_LIBRARY_PATH
+roslaunch /home/hann/vins_fusion_d435i_local/bags/realsense_d435i_kalibr_183222/rs_camera.launch initial_reset:=${CAMERA_INITIAL_RESET}
 exec bash"
 
 VINS_COMMAND="source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
-mkdir -p /work/output/kalibr_183222/pose_graph
-rosrun vins vins_node /work/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
+mkdir -p /home/hann/vins_fusion_d435i_local/output/kalibr_183222/pose_graph
+rosrun vins vins_node /home/hann/vins_fusion_d435i_local/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml
 exec bash"
 
 MAVROS_COMMAND="source /opt/ros/noetic/setup.bash
@@ -80,7 +80,7 @@ roslaunch mavros px4.launch fcu_url:=${FCU_URL}
 exec bash"
 
 BRIDGE_COMMAND="source /opt/ros/noetic/setup.bash
-source /work/catkin_ws/devel/setup.bash
+source /home/hann/vins_fusion_d435i_local/catkin_ws/devel/setup.bash
 roslaunch vins vins_px4_bridge.launch input_topic:=/vins_estimator/odometry output_topic:=/mavros/odometry/out parent_frame_id:=odom child_frame_id:=base_link
 exec bash"
 

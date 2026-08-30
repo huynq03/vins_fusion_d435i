@@ -1,0 +1,25 @@
+services:
+  vins-d435i:
+    container_name: vins_d435i_compose
+    image: vins-fusion-d435i-local:compose
+    user: hann
+    environment:
+      HOME: /home/hann
+      USER: hann
+      LD_LIBRARY_PATH: /home/hann/vins_fusion_d435i_local/third_party/librealsense/build/Release:/home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/lib:/opt/librealsense/lib:/opt/ros/noetic/lib
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HOST_UID: "${HOST_UID:-1000}"
+        HOST_GID: "${HOST_GID:-1000}"
+    network_mode: host
+    ipc: host
+    privileged: true
+    stdin_open: true
+    tty: true
+    working_dir: /home/hann/vins_fusion_d435i_local
+    volumes:
+      - .:/home/hann/vins_fusion_d435i_local
+      - /dev:/dev
+      - /run/udev:/run/udev:ro

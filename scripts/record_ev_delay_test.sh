@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-OUTPUT_DIR="/work/output/ev_delay"
+OUTPUT_DIR="/home/hann/vins_fusion_d435i_local/output/ev_delay"
 MOVE_SECONDS=5
 STOP_SECONDS=3
 SKIP_ULOG_CONFIRM=false
@@ -16,7 +16,7 @@ Record the ROS side of the PX4 external-vision delay test and guide the
 operator through +X, -X, +Y and -Y translations without yaw rotation.
 
 Options:
-  --output-dir DIR       Output directory (default: /work/output/ev_delay).
+  --output-dir DIR       Output directory (default: /home/hann/vins_fusion_d435i_local/output/ev_delay).
   --move-seconds N       Duration of each slow translation (default: 5).
   --stop-seconds N       Duration of each stop after motion (default: 3).
   --skip-ulog-confirm    Do not wait for the ULog readiness confirmation.
