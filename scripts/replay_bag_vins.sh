@@ -1,183 +1,70 @@
 #!/usr/bin/env bash
-# Replay a D435i stereo-IMU ROS1 bag through the local VINS-Fusion build.
-# ROS Noetic's setup scripts read optional environment variables before
-# assigning defaults, so nounset cannot be enabled while sourcing them.
-set -Eeo pipefail
-
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-CONTAINER_NAME="${VINS_CONTAINER:-vins_d435i_compose}"
-CONFIG="${PROJECT_DIR}/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml"
-RATE=1.0
-RECORD_TRACKS=false
+# Replay a D435i stereo+IMU bag through VINS-Fusion and record the resulting odometry.
+# Runs inside the container; from the host it re-executes itself there.
+set -eo pipefail
 
 usage() {
     cat <<'EOF'
-Usage:
-  ./scripts/replay_bag_vins.sh BAG_FILE [options]
+Usage: ./scripts/replay_bag_vins.sh BAG [--output OUT.bag] [--rate R] [--record-tracks]
 
-Replay D435i stereo images and IMU from a ROS1 bag into VINS-Fusion, then
-record the reconstructed /vins_estimator/odometry to a separate bag.
-
-Options:
-  --output PATH       Output odometry bag (default: BAG_FILE with _vins_odometry.bag).
-  --rate RATE         rosbag playback rate, default: 1.0.
-  --container NAME    Docker container, default: vins_d435i_compose.
-  --config PATH       VINS YAML config, default: D435i Kalibr config.
-  --record-tracks     Also record /vins_estimator/image_track (requires show_track: 1).
-  -h, --help          Show this help.
+  --output          default: BAG with _vins_odometry.bag suffix
+  --rate            rosbag play rate (default 1.0)
+  --record-tracks   also record /vins_estimator/image_track (needs show_track: 1)
 EOF
 }
 
-[[ $# -ge 1 ]] || { usage >&2; exit 2; }
-case "$1" in
-    -h|--help) usage; exit 0 ;;
-esac
-BAG_FILE="$1"
-shift
-OUTPUT=""
+CONTAINER="vins_d435i_compose"
+WS="/home/air/vins_fusion_d435i_local"
+CONFIG="$WS/bags/realsense_d435i_kalibr_183222/realsense_stereo_imu_config.yaml"
 
-while (($# > 0)); do
+[[ $# -ge 1 && "$1" != -h && "$1" != --help ]] || { usage; exit 2; }
+
+if [[ ! -f /.dockerenv ]]; then
+    # The project is mounted at $WS: map host paths of the project into the container.
+    ROOT="$(realpath "$(dirname "$0")/..")"
+    ARGS=()
+    for a in "$@"; do [[ -e "$a" || "$a" == *.bag ]] && a="$(realpath -m "$a")" && a="${a/#$ROOT/$WS}"; ARGS+=("$a"); done
+    exec docker exec $([[ -t 0 ]] && echo -it) "$CONTAINER" bash "$WS/scripts/replay_bag_vins.sh" "${ARGS[@]}"
+fi
+
+BAG="$(realpath "$1")"; shift
+OUTPUT="" RATE=1.0 TOPICS=(/vins_estimator/odometry /vins_estimator/path)
+while (($#)); do
     case "$1" in
-        --output) [[ $# -ge 2 ]] || { echo "Missing value after --output" >&2; exit 2; }; OUTPUT="$2"; shift 2 ;;
-        --rate) [[ $# -ge 2 ]] || { echo "Missing value after --rate" >&2; exit 2; }; RATE="$2"; shift 2 ;;
-        --container) [[ $# -ge 2 ]] || { echo "Missing value after --container" >&2; exit 2; }; CONTAINER_NAME="$2"; shift 2 ;;
-        --config) [[ $# -ge 2 ]] || { echo "Missing value after --config" >&2; exit 2; }; CONFIG="$2"; shift 2 ;;
-        --record-tracks) RECORD_TRACKS=true; shift ;;
-        -h|--help) usage; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+        --output) OUTPUT="$(realpath -m "$2")"; shift 2 ;;
+        --rate) RATE="$2"; shift 2 ;;
+        --record-tracks) TOPICS+=(/vins_estimator/image_track); shift ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
-
-# The project directory is mounted at the same location inside the Compose
-# container, so relative paths are resolved before crossing the Docker boundary.
-if [[ ! -f /.dockerenv ]]; then
-    command -v docker >/dev/null 2>&1 || {
-        echo "Docker is required when this script is run on the host." >&2
-        exit 1
-    }
-    docker inspect "$CONTAINER_NAME" >/dev/null 2>&1 || {
-        echo "Docker container '$CONTAINER_NAME' does not exist." >&2
-        exit 1
-    }
-    if [[ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER_NAME")" != true ]]; then
-        docker start "$CONTAINER_NAME" >/dev/null
-    fi
-    EXTRA_ARGS=()
-    if [[ "$RECORD_TRACKS" == true ]]; then EXTRA_ARGS+=(--record-tracks); fi
-    exec docker exec -it "$CONTAINER_NAME" bash \
-        "/home/hann/vins_fusion_d435i_local/scripts/replay_bag_vins.sh" \
-        "$BAG_FILE" --output "${OUTPUT:-}" --rate "$RATE" --config "$CONFIG" "${EXTRA_ARGS[@]}"
-fi
-
-if [[ "$BAG_FILE" != /* ]]; then
-    BAG_FILE="${PROJECT_DIR}/${BAG_FILE}"
-fi
-if [[ -z "$OUTPUT" ]]; then
-    OUTPUT="${BAG_FILE%.bag}_vins_odometry.bag"
-elif [[ "$OUTPUT" != /* ]]; then
-    OUTPUT="${PROJECT_DIR}/${OUTPUT}"
-fi
-if [[ "$CONFIG" != /* ]]; then
-    CONFIG="${PROJECT_DIR}/${CONFIG}"
-fi
-
-[[ -f "$BAG_FILE" ]] || { echo "Bag does not exist: $BAG_FILE" >&2; exit 1; }
-[[ -f "$CONFIG" ]] || { echo "VINS config does not exist: $CONFIG" >&2; exit 1; }
-[[ "$OUTPUT" != "$BAG_FILE" ]] || { echo "Output bag must differ from input bag." >&2; exit 2; }
+OUTPUT="${OUTPUT:-${BAG%.bag}_vins_odometry.bag}"
+[[ -f "$BAG" ]] || { echo "Bag not found: $BAG" >&2; exit 1; }
 
 source /opt/ros/noetic/setup.bash
-source "${PROJECT_DIR}/catkin_ws/devel/setup.bash" --extend
+source "$WS/catkin_ws/devel/setup.bash"
+mkdir -p "$(dirname "$OUTPUT")" "$WS/output/kalibr_183222/pose_graph"
 
-for command_name in roscore rosbag rosrun rosparam rostopic; do
-    command -v "$command_name" >/dev/null 2>&1 || {
-        echo "Required ROS command not found: $command_name" >&2
-        exit 1
-    }
-done
-
-mkdir -p "$(dirname "$OUTPUT")" "${PROJECT_DIR}/output/kalibr_183222/pose_graph"
-
-ROSCORE_PID=""
-VINS_PID=""
-RECORDER_PID=""
-PLAYER_PID=""
-
-stop_process() {
-    local pid="$1"
-    [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null || return 0
-    kill -INT "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-}
-
-cleanup() {
-    local status=$?
-    trap - EXIT INT TERM
-    stop_process "$PLAYER_PID"
-    stop_process "$RECORDER_PID"
-    stop_process "$VINS_PID"
-    stop_process "$ROSCORE_PID"
-    exit "$status"
-}
-trap cleanup EXIT INT TERM
+PIDS=()
+cleanup() { for ((i = ${#PIDS[@]} - 1; i >= 0; i--)); do kill -INT "${PIDS[i]}" 2>/dev/null && wait "${PIDS[i]}" 2>/dev/null || true; done; }
+trap cleanup EXIT
 
 if ! rostopic list >/dev/null 2>&1; then
-    roscore >/tmp/vins_bag_roscore.log 2>&1 &
-    ROSCORE_PID=$!
-    for _ in {1..50}; do rostopic list >/dev/null 2>&1 && break; sleep 0.1; done
+    roscore >/tmp/replay_roscore.log 2>&1 & PIDS+=($!)
+    until rostopic list >/dev/null 2>&1; do sleep 0.2; done
 fi
-rostopic list >/dev/null 2>&1 || { echo "ROS master did not start." >&2; exit 1; }
-
 rosparam set use_sim_time true
 
-echo "Starting VINS-Fusion with: $CONFIG"
-(cd "$(dirname "$CONFIG")" && exec rosrun vins vins_node "$CONFIG") >/tmp/vins_bag_vins.log 2>&1 &
-VINS_PID=$!
+rosrun vins vins_node "$CONFIG" >/tmp/replay_vins.log 2>&1 & PIDS+=($!)
+until rostopic info /vins_estimator/odometry >/dev/null 2>&1; do sleep 0.2; done
 
-for _ in {1..100}; do
-    rostopic info /vins_estimator/odometry >/dev/null 2>&1 && break
-    kill -0 "$VINS_PID" 2>/dev/null || { tail -100 /tmp/vins_bag_vins.log >&2; exit 1; }
-    sleep 0.1
-done
-rostopic info /vins_estimator/odometry >/dev/null 2>&1 || {
-    echo "VINS did not advertise /vins_estimator/odometry." >&2
-    tail -100 /tmp/vins_bag_vins.log >&2
-    exit 1
-}
+rosbag record -O "$OUTPUT" "${TOPICS[@]}" >/tmp/replay_record.log 2>&1 & PIDS+=($!)
+sleep 1
 
-echo "Recording reconstructed odometry: $OUTPUT"
-RECORD_TOPICS=(/vins_estimator/odometry /vins_estimator/path)
-if [[ "$RECORD_TRACKS" == true ]]; then RECORD_TOPICS+=(/vins_estimator/image_track); fi
-rosbag record -O "$OUTPUT" "${RECORD_TOPICS[@]}" >/tmp/vins_bag_record.log 2>&1 &
-RECORDER_PID=$!
-sleep 0.5
+echo "Replaying $BAG at ${RATE}x (VINS log: /tmp/replay_vins.log)"
+rosbag play --clock --rate "$RATE" "$BAG" --topics \
+    /camera/infra1/image_rect_raw /camera/infra2/image_rect_raw /camera/imu
+sleep 3  # let VINS drain its queue before the recorder closes
 
-echo "Replaying camera and IMU at ${RATE}x..."
-rosbag play --clock --rate "$RATE" "$BAG_FILE" --topics \
-    /camera/infra1/image_rect_raw \
-    /camera/infra2/image_rect_raw \
-    /camera/imu &
-PLAYER_PID=$!
-while kill -0 "$PLAYER_PID" 2>/dev/null; do
-    if ! kill -0 "$VINS_PID" 2>/dev/null; then
-        echo "VINS exited during playback." >&2
-        tail -100 /tmp/vins_bag_vins.log >&2
-        exit 1
-    fi
-    if ! kill -0 "$RECORDER_PID" 2>/dev/null; then
-        echo "Odometry recorder exited during playback." >&2
-        tail -100 /tmp/vins_bag_record.log >&2
-        exit 1
-    fi
-    sleep 1
-done
-wait "$PLAYER_PID"
-PLAYER_PID=""
-
-# Let VINS finish processing queued camera measurements before the recorder is closed.
-sleep 3
-stop_process "$RECORDER_PID"
-RECORDER_PID=""
-
+cleanup; trap - EXIT
 echo "Saved: $OUTPUT"
 rosbag info "$OUTPUT" | sed -n '/topics:/,$p'
