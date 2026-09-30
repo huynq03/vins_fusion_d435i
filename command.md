@@ -21,6 +21,58 @@ rs-enumerate-devices -s                     # phải thấy Intel RealSense D435
 rs-enumerate-devices | grep "Usb Type"      # phải là 3.2
 ```
 
+# Chạy nhanh: chỉ bật cam + VINS
+Trên host:
+```bash
+cd ~/huy/vins_fusion_d435i
+./scripts/run.sh vins
+```
+Hoặc trong container:
+```bash
+docker exec -it vins_d435i_compose bash
+./scripts/run.sh vins
+```
+tmux `vins` có 2 pane: CAMERA (`rs_camera.launch`) và VINS (tự chờ có IR + IMU rồi mới chạy `vins_node`;
+quá 30 s không có data thì báo lỗi và giữ log).
+```bash
+./scripts/run.sh vins --reset     # reset D435i lúc khởi động (khi cam lỗi USB)
+./scripts/run.sh vins --dry-run   # chỉ in lệnh, không chạy
+./scripts/run.sh stop             # dừng cam + VINS, đóng tmux (LUÔN dừng bằng lệnh này)
+tmux a -t vins                    # vào lại sau khi Ctrl+b d
+```
+Kiểm tra odometry (terminal khác, trong container):
+```bash
+source /opt/ros/noetic/setup.bash
+rostopic hz /vins_estimator/odometry    # ~30 Hz
+```
+Lúc khởi động lắc/xoay cam vài giây để VINS khởi tạo tốt.
+
+# Chạy tất cả: cam + VINS + MAVROS + gửi odom sang FC
+```bash
+cd ~/huy/vins_fusion_d435i
+./scripts/run.sh px4                              # FC qua GPIO UART: /dev/ttyTHS1:921600 (mặc định)
+./scripts/run.sh px4 --fcu /dev/ttyACM0:921600    # FC qua USB native
+./scripts/run.sh px4 --reset                      # reset D435i lúc khởi động
+./scripts/run.sh stop                             # dừng tất cả
+```
+tmux `vins` có 4 pane:
+1. CAMERA: `rs_camera.launch`
+2. VINS: chờ IR + IMU rồi chạy `vins_node`
+3. MAVROS: `mavros px4.launch fcu_url:=/dev/ttyTHS1:921600`
+4. BRIDGE: chờ `/vins_estimator/odometry` rồi chạy `vins_px4_bridge` -> `/mavros/odometry/out`
+
+Kiểm tra (terminal khác, trong container):
+```bash
+source /opt/ros/noetic/setup.bash
+rostopic echo -n1 /mavros/state            # connected: True
+rostopic hz /vins_estimator/odometry       # ~30 Hz
+rostopic hz /mavros/odometry/out           # ~30 Hz, odom đang gửi sang FC
+rostopic hz /mavros/local_position/pose    # EKF2 của PX4 có output
+```
+Nếu `connected: False`: kiểm tra FC có nguồn / dây UART, trong container (khi MAVROS đang tắt) chạy
+`stty -F /dev/ttyTHS1 921600 raw && timeout 2 cat /dev/ttyTHS1 | wc -c` phải > 0.
+Trước khi bay: odom VINS phải ổn định, và PX4 phải bật fuse vision (`EKF2_EV_CTRL`, xem mục Terminal 5).
+
 # open cam
 ```bash
 source /opt/ros/noetic/setup.bash
