@@ -14,9 +14,9 @@ cam1_calib: "right.yaml"
 image_width: 640
 image_height: 480
 
-# White pixels may contain tracked features; black pixels are ignored.
-# The mask removes the airframe/propeller regions visible in the top corners.
-masking: 1
+# White pixels may contain tracked features; black pixels are ignored when masking is enabled.
+# Set masking to 1 to remove the airframe/propeller regions with mask_img.jpg.
+masking: 0
 mask_img_name: "mask_img.jpg"
 
 # body_T_cam is the inverse of Kalibr T_cam_imu (T_imu_cam).

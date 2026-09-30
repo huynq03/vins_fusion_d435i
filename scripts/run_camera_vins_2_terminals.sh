@@ -103,7 +103,7 @@ print_command() {
 
 wait_for_camera_topics() {
     source /opt/ros/noetic/setup.bash
-    for attempt in {1..120}; do
+    for _ in {1..120}; do
         if rostopic info /camera/infra1/image_rect_raw >/dev/null 2>&1 &&
            rostopic info /camera/infra2/image_rect_raw >/dev/null 2>&1 &&
            rostopic info /camera/imu >/dev/null 2>&1; then

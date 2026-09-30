@@ -385,7 +385,8 @@ Stereo IR:       640x480, 30 Hz
 Gyroscope:       400 Hz
 Accelerometer:   100 Hz
 IMU merge:       linear_interpolation
-Depth/color:     tắt
+Depth:           tắt
+Color:           640x480, 30 Hz
 Emitter:         tắt bằng d435i_emitter_off.json
 ```
 
@@ -858,6 +859,9 @@ export LD_LIBRARY_PATH=/home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/lib:/o
 
 roslaunch /home/hann/vins_fusion_d435i_local/bags/realsense_d435i_kalibr_183222/rs_camera.launch
 ```
+source /opt/ros/noetic/setup.bash
+source /work/rs_ros_ws/devel/setup.bash
+roslaunch /work/bags/realsense_d435i_kalibr_183222/rs_camera.launch enable_color:=true
 
 ### Terminal 2: VINS-Fusion
 
@@ -926,22 +930,6 @@ Nhấn `Ctrl+C` để dừng ghi. File trên host là:
 ```text
 output/kalibr_183222/odometry_xyz.csv
 ```
-
-
-
-# Chạy trên host Jetson:
-cd ~/vins_fusion_d435i_local
-./scripts/run_vins_px4_4_terminals.sh
-
-
-# Nếu cần reset D435i một lần khi khởi động:
-./scripts/run_vins_px4_4_terminals.sh --initial-reset
-
-
-# Xem lệnh mà không thực sự chạy:
-./scripts/run_vins_px4_4_terminals.sh --dry-run
-
-
 
 
 cd /home/hann/vins_fusion_d435i_local/node_control
