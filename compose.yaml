@@ -2,11 +2,16 @@ services:
   vins-d435i:
     container_name: vins_d435i_compose
     image: vins-fusion-d435i-local:compose
-    user: hann
+    user: air
+    # dialout: serial ports for MAVROS (/dev/ttyUSB*, /dev/ttyACM*, /dev/ttyTHS*).
+    group_add:
+      - dialout
+      - plugdev
+      - video
     environment:
-      HOME: /home/hann
-      USER: hann
-      LD_LIBRARY_PATH: /home/hann/vins_fusion_d435i_local/third_party/librealsense/build/Release:/home/hann/vins_fusion_d435i_local/rs_ros_ws/devel/lib:/opt/librealsense/lib:/opt/ros/noetic/lib
+      HOME: /home/air
+      USER: air
+      LD_LIBRARY_PATH: /home/air/vins_fusion_d435i_local/third_party/librealsense/build/Release:/home/air/vins_fusion_d435i_local/rs_ros_ws/devel/lib:/opt/librealsense/lib:/opt/ros/noetic/lib
     build:
       context: .
       dockerfile: Dockerfile
@@ -18,8 +23,10 @@ services:
     privileged: true
     stdin_open: true
     tty: true
-    working_dir: /home/hann/vins_fusion_d435i_local
+    working_dir: /home/air/vins_fusion_d435i_local
     volumes:
-      - .:/home/hann/vins_fusion_d435i_local
+      - .:/home/air/vins_fusion_d435i_local
+      # Persist the librealsense install (built from third_party/librealsense) across container re-creation.
+      - ./third_party/librealsense/install:/opt/librealsense
       - /dev:/dev
       - /run/udev:/run/udev:ro
