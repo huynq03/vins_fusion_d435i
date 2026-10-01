@@ -135,6 +135,8 @@ Chứa dữ liệu sinh ra khi VINS chạy:
 
 `scripts/plot_odometry.py` vẽ position, velocity, quỹ đạo X-Y và 3D từ bag hoặc CSV.
 
+`scripts/record_odom.sh` ghi odometry VINS và odometry PX4 ra CSV (xem mục 10).
+
 ## 3. Phiên bản đang dùng
 
 ```text
@@ -663,6 +665,54 @@ python3 scripts/plot_odometry.py bags/recordings/<bag>.bag --csv output/odom.csv
 ```
 
 Kết quả: `output/kalibr_183222/odometry_xyz_odometry.png`.
+
+### Lưu odometry VINS và odometry PX4 ra CSV
+
+`scripts/record_odom.sh` ghi đồng thời odometry raw của VINS và odometry đã fuse
+của PX4 (EKF2) ra CSV. Chạy khi pipeline đang chạy (`./scripts/run.sh px4`), trên
+host hoặc trong container:
+
+```bash
+./scripts/record_odom.sh                    # ghi tới khi Ctrl+C
+./scripts/record_odom.sh --duration 60      # tự dừng sau 60 s
+./scripts/record_odom.sh --output output/odom_logs/test1
+./scripts/record_odom.sh --topic fc_mavlink_odom=/mavros/odometry/in   # ghi thêm topic Odometry khác
+```
+
+Mặc định ghi vào `output/odom_logs/<YYYYmmdd_HHMMSS>/`:
+
+| File | Topic | Nội dung |
+| --- | --- | --- |
+| `vins_odom.csv` | `/vins_estimator/odometry` | VINS raw: body RDF, vận tốc theo world |
+| `vins_flu_odom.csv` | `/mavros/odometry/out` | VINS sau bridge (đúng dữ liệu gửi sang PX4): body FLU, vận tốc theo body |
+| `fc_odom.csv` | `/mavros/local_position/odom` | Output EKF2 của PX4: world ENU, body FLU, vận tốc theo body |
+
+Cột: `time_s` (timestamp của message), `recv_time_s` (lúc nhận), `x_m,y_m,z_m`,
+`qx,qy,qz,qw`, `roll_deg,pitch_deg,yaw_deg`, `vx_mps,vy_mps,vz_mps`,
+`wx_radps,wy_radps,wz_radps`.
+
+Muốn so sánh PX4 với VINS thì dùng `fc_odom.csv` và `vins_flu_odom.csv` vì hai file
+này cùng quy ước trục; orientation trong `vins_odom.csv` là body RDF nên roll/pitch/yaw
+không so trực tiếp với PX4 được. `./scripts/run.sh stop` cũng dừng script ghi này.
+
+Vẽ VINS raw và PX4 fuse chồng lên nhau trong một hình (trong container):
+
+```bash
+cd /home/air/vins_fusion_d435i_local
+python3 scripts/plot_odom_compare.py output/odom_logs/<YYYYmmdd_HHMMSS>
+python3 scripts/plot_odom_compare.py output/odom_logs/<YYYYmmdd_HHMMSS> --relative
+```
+
+Kết quả là `odom_compare.png` trong cùng thư mục: x, y, z, yaw theo thời gian và quỹ
+đạo X-Y, kèm RMS sai lệch PX4 − VINS trên từng trục. Yaw của VINS lấy từ
+`vins_flu_odom.csv`. `--relative` trừ vị trí đầu của từng nguồn, dùng khi hai gốc tọa
+độ lệch nhau (ví dụ z của PX4 lấy từ baro).
+
+Vẽ riêng một file:
+
+```bash
+python3 scripts/plot_odometry.py output/odom_logs/<YYYYmmdd_HHMMSS>/fc_odom.csv
+```
 
 ## 11. Ghi rosbag
 

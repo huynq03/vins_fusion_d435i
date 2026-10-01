@@ -212,6 +212,7 @@ rosservice call /mavros/param/get EKF2_EV_DELAY
 #   docker exec -it vins_d435i_compose bash  ->  ./scripts/run.sh vins
 
 ./scripts/replay_bag_vins.sh bags/recordings/<bag>.bag [--rate 2] [--output output/x.bag]
+./scripts/record_odom.sh [--duration 60] [--output output/odom_logs/x]   # odom VINS + odom FC -> CSV, Ctrl+C dừng
 ./scripts/record_webcam.sh [cam1|cam2|all]
 ```
 Trong container (`cd ~/vins_fusion_d435i_local`):
@@ -223,6 +224,25 @@ python3 scripts/bag_to_video.py vins  <bag> out.mp4 [--csv out.csv]             
 python3 scripts/bag_to_video.py live  out.mp4 --topic /camera/color/image_raw       # ghi topic live, Ctrl+C dừng
 ```
 Bag `record` khá nặng: ~25 MB/s (RGB + 2 IR + IMU).
+
+# Lưu odom VINS + odom FC ra CSV
+Chạy khi pipeline đang chạy (`./scripts/run.sh px4`), trên host hoặc trong container:
+```bash
+./scripts/record_odom.sh                    # ghi tới khi Ctrl+C -> output/odom_logs/<ngày_giờ>/
+./scripts/record_odom.sh --duration 60      # tự dừng sau 60 s
+./scripts/record_odom.sh --topic fc_mavlink_odom=/mavros/odometry/in   # ghi thêm topic Odometry khác
+```
+- `vins_odom.csv`: `/vins_estimator/odometry` (VINS raw, body RDF, vận tốc theo world)
+- `vins_flu_odom.csv`: `/mavros/odometry/out` (VINS sau bridge, body FLU, vận tốc theo body)
+- `fc_odom.csv`: `/mavros/local_position/odom` (EKF2 của PX4 đã fuse, ENU/FLU, vận tốc theo body)
+
+So sánh FC với VINS thì dùng `fc_odom.csv` và `vins_flu_odom.csv` (cùng quy ước trục).
+Vẽ (trong container, `cd ~/vins_fusion_d435i_local`):
+```bash
+python3 scripts/plot_odom_compare.py output/odom_logs/<ngày_giờ>              # VINS raw + FC fuse chung 1 hình -> odom_compare.png
+python3 scripts/plot_odom_compare.py output/odom_logs/<ngày_giờ> --relative   # trừ vị trí đầu của từng nguồn
+python3 scripts/plot_odometry.py output/odom_logs/<ngày_giờ>/fc_odom.csv      # vẽ riêng 1 file
+```
 
 # Lỗi thường gặp
 - `/camera/imu` không có data (VINS in mãi `wait for imu ...`), image vẫn 30 Hz:

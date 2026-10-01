@@ -93,7 +93,7 @@ case "$MODE" in
     record) PANES=(CAMERA VINS RECORD) ;;
     stop)
         # SIGINT lets rosbag write its index and roslaunch shut nodes down cleanly.
-        in_container pkill -INT -f 'rosbag/record|vins_node|roslaunch' || true
+        in_container pkill -INT -f 'rosbag/record|record_odom_csv.py|vins_node|roslaunch' || true
         sleep 5
         tmux kill-session -t "$SESSION" 2>/dev/null || true
         # From the host, closing tmux only ends the `docker exec` clients; the pane shells

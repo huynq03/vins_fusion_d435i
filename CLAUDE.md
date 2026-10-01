@@ -56,7 +56,7 @@ There is no test suite or linter; verification is done by running the pipeline a
 
 Only the camera pane runs `roslaunch` without waiting (it creates the ROS master); every other pane waits for the master, the VINS pane additionally waits for real IR + IMU data, the bridge/record panes wait for `/vins_estimator/odometry`.
 
-Other scripts: `replay_bag_vins.sh BAG` (sim-time replay into VINS, records odometry; re-execs itself in the container from the host), `plot_odometry.py BAG|CSV`, `bag_to_video.py raw|track|vins|live`, `record_webcam.sh` (external USB webcams, host-side ffmpeg). Python scripts run inside the container (need `rosbag`/`cv_bridge`; Python 3.8, OpenCV 4.2 — no 3.9+ syntax).
+Other scripts: `replay_bag_vins.sh BAG` (sim-time replay into VINS, records odometry; re-execs itself in the container from the host), `record_odom.sh` (VINS raw, bridge output and PX4 `/mavros/local_position/odom` to CSV in `output/odom_logs/<time>/` via `record_odom_csv.py`; re-execs in the container, also stopped by `run.sh stop`), `plot_odom_compare.py DIR` (overlays VINS raw and PX4 fused odometry from such a directory), `plot_odometry.py BAG|CSV`, `bag_to_video.py raw|track|vins|live`, `record_webcam.sh` (external USB webcams, host-side ffmpeg). Python scripts run inside the container (need `rosbag`/`cv_bridge`; Python 3.8, OpenCV 4.2 — no 3.9+ syntax).
 
 Health check: `/camera/imu` ~400 Hz, `/camera/infra1/image_rect_raw` ~30 Hz, `/vins_estimator/odometry` ~30 Hz, `/mavros/odometry/out` ~30 Hz, `/mavros/state` `connected: True`.
 

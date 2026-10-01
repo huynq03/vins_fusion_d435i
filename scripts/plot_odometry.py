@@ -2,7 +2,8 @@
 """Plot nav_msgs/Odometry (position, velocity, X-Y and 3D trajectory) from a bag or CSV.
 
 Input is either a ROS 1 .bag or a CSV written by `rostopic echo -p` of the odometry
-topic or of its .../pose/pose/position field. Run bag input inside the container.
+topic or of its .../pose/pose/position field, or by record_odom_csv.py. Run bag input
+inside the container.
 """
 
 import argparse
@@ -39,6 +40,9 @@ def read_csv(path):
         rows = list(csv.DictReader(stream))
     if not rows:
         raise SystemExit("No samples in {}".format(path))
+    if "time_s" in rows[0]:  # written by record_odom_csv.py or by --csv below
+        cols = ["time_s"] + [a + "_m" for a in AXES] + ["v" + a + "_mps" for a in AXES]
+        return np.asarray([[float(row[c]) for c in cols] for row in rows], dtype=float)
     # `rostopic echo -p` of the whole Odometry vs. of its position field.
     prefix = "field.pose.pose.position." if "field.pose.pose.position.x" in rows[0] else "field."
     vel = "field.twist.twist.linear."
