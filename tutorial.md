@@ -528,6 +528,11 @@ roslaunch mavros px4.launch \
   fcu_url:=/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0:921600
 ```
 
+Đây là mặc định của `scripts/run.sh px4`. Không dùng GPIO UART `/dev/ttyTHS1` của
+Jetson ở 921600: đo được FC chỉ nhận khoảng 50% gói Jetson gửi lên (mất nửa
+odometry, PX4 báo `Connection to mission computer lost`), còn qua CP2102 thì
+không mất gói.
+
 Nếu không có cả `/dev/ttyACM*` và `/dev/ttyUSB*`, kiểm tra `lsusb -t`. Thiết bị
 phải có driver như `cdc_acm`, `cp210x`, `ftdi_sio` hoặc `ch341`; trạng thái
 `Driver=usbfs` nghĩa là chưa có driver serial nên MAVROS chưa thể mở cổng.
@@ -666,33 +671,61 @@ python3 scripts/plot_odometry.py bags/recordings/<bag>.bag --csv output/odom.csv
 
 Kết quả: `output/kalibr_183222/odometry_xyz_odometry.png`.
 
-### Lưu odometry VINS và odometry PX4 ra CSV
+### Lưu odometry VINS, odometry PX4 và GPS raw ra CSV
 
-`scripts/record_odom.sh` ghi đồng thời odometry raw của VINS và odometry đã fuse
-của PX4 (EKF2) ra CSV. Chạy khi pipeline đang chạy (`./scripts/run.sh px4`), trên
-host hoặc trong container:
+`scripts/record_odom.sh` ghi đồng thời odometry raw của VINS, odometry đã fuse
+của PX4 (EKF2) và GPS raw (module UWB Nooploop nối vào cổng GPS của FC) ra CSV. Chạy khi pipeline đang chạy (`./scripts/run.sh px4`), trên
+host hoặc trong container; script chạy trong tmux riêng `odom_rec`, tách khỏi tmux `vins`:
 
 ```bash
-./scripts/record_odom.sh                    # ghi tới khi Ctrl+C
+./scripts/record_odom.sh                    # ghi tới khi Ctrl+C trong tmux odom_rec
 ./scripts/record_odom.sh --duration 60      # tự dừng sau 60 s
 ./scripts/record_odom.sh --output output/odom_logs/test1
 ./scripts/record_odom.sh --topic fc_mavlink_odom=/mavros/odometry/in   # ghi thêm topic Odometry khác
+./scripts/record_odom.sh --no-tmux          # ghi trong terminal đang gõ, không mở tmux
+tmux a -t odom_rec                          # vào lại tmux ghi sau khi Ctrl+b d
 ```
 
-Mặc định ghi vào `output/odom_logs/<YYYYmmdd_HHMMSS>/`:
+Dừng ghi bằng Ctrl+C trong tmux `odom_rec` hoặc `./scripts/run.sh stop`; cả hai đều lưu
+file. Sau khi dừng, tmux `odom_rec` tự đóng, terminal đã gõ lệnh trở lại bình thường và in
+danh sách file đã ghi. Chạy khi pipeline chưa bật thì bộ ghi chờ ROS master.
+
+Khi bắt đầu ghi, script cũng bật ghi log trên thẻ SD của flight controller (lệnh NSH
+`logger on`; PX4 bình thường chỉ ghi khi arm) và tắt khi dừng (`logger off`). Đường dẫn
+file ULog trên FC được in ra và lưu vào `fc_ulog_<YYYYmmdd_HHMMSS>.txt` trong thư mục ghi.
+Log này chứa trạng thái bên trong EKF2 (cờ fuse, innovation của vision) mà các topic
+odometry không có. Log khá nặng, khoảng 220 kB/s (~20 MB cho 90 s). Thêm `--no-fc-log` nếu
+không muốn ghi log FC.
+
+`scripts/px4_shell.py` gửi lệnh NSH của PX4 qua MAVROS (không cần pymavlink), chạy trong
+container khi MAVROS đang kết nối:
+
+```bash
+python3 scripts/px4_shell.py "logger status" "gps status"
+```
+
+Mặc định ghi vào `output/odom_logs/<YYYYmmdd_HHMMSS>/`. Tên file cũng có ngày giờ lúc
+bắt đầu ghi (giờ máy host), ví dụ `fc_odom_20261001_205754.csv`:
 
 | File | Topic | Nội dung |
 | --- | --- | --- |
-| `vins_odom.csv` | `/vins_estimator/odometry` | VINS raw: body RDF, vận tốc theo world |
-| `vins_flu_odom.csv` | `/mavros/odometry/out` | VINS sau bridge (đúng dữ liệu gửi sang PX4): body FLU, vận tốc theo body |
-| `fc_odom.csv` | `/mavros/local_position/odom` | Output EKF2 của PX4: world ENU, body FLU, vận tốc theo body |
+| `vins_odom_<YYYYmmdd_HHMMSS>.csv` | `/vins_estimator/odometry` | VINS raw: body RDF, vận tốc theo world |
+| `vins_flu_odom_<YYYYmmdd_HHMMSS>.csv` | `/mavros/odometry/out` | VINS sau bridge (đúng dữ liệu gửi sang PX4): body FLU, vận tốc theo body |
+| `fc_odom_<YYYYmmdd_HHMMSS>.csv` | `/mavros/local_position/odom` | Output EKF2 của PX4: world ENU, body FLU, vận tốc theo body |
+| `gps_raw_<YYYYmmdd_HHMMSS>.csv` | `/mavros/gpsstatus/gps1/raw` | MAVLink `GPS_RAW_INT`: dữ liệu GPS / UWB thô, trước khi vào EKF2 |
 
 Cột: `time_s` (timestamp của message), `recv_time_s` (lúc nhận), `x_m,y_m,z_m`,
 `qx,qy,qz,qw`, `roll_deg,pitch_deg,yaw_deg`, `vx_mps,vy_mps,vz_mps`,
 `wx_radps,wy_radps,wz_radps`.
 
-Muốn so sánh PX4 với VINS thì dùng `fc_odom.csv` và `vins_flu_odom.csv` vì hai file
-này cùng quy ước trục; orientation trong `vins_odom.csv` là body RDF nên roll/pitch/yaw
+File `gps_raw` có cột riêng: `time_s, recv_time_s, x_m, y_m, z_m, lat_deg, lon_deg, alt_m,
+fix_type, satellites, eph, epv, vel_mps, cog_deg`. `x_m` (đông), `y_m` (bắc), `z_m` (lên) tính
+từ mẫu đầu tiên có fix, dùng bán kính Trái Đất của PX4 (6371000 m); các dòng chưa có fix
+để trống ba cột này. lat/lon trong MAVLink có bước 1e-7 độ nên x/y có bước khoảng 1 cm.
+File chỉ có header nếu FC không nhận dữ liệu GPS.
+
+Muốn so sánh PX4 với VINS thì dùng file `fc_odom` và `vins_flu_odom` vì hai file
+này cùng quy ước trục; orientation trong file `vins_odom` là body RDF nên roll/pitch/yaw
 không so trực tiếp với PX4 được. `./scripts/run.sh stop` cũng dừng script ghi này.
 
 Vẽ VINS raw và PX4 fuse chồng lên nhau trong một hình (trong container):
@@ -703,15 +736,22 @@ python3 scripts/plot_odom_compare.py output/odom_logs/<YYYYmmdd_HHMMSS>
 python3 scripts/plot_odom_compare.py output/odom_logs/<YYYYmmdd_HHMMSS> --relative
 ```
 
-Kết quả là `odom_compare.png` trong cùng thư mục: x, y, z, yaw theo thời gian và quỹ
-đạo X-Y, kèm RMS sai lệch PX4 − VINS trên từng trục. Yaw của VINS lấy từ
-`vins_flu_odom.csv`. `--relative` trừ vị trí đầu của từng nguồn, dùng khi hai gốc tọa
+Kết quả là `odom_compare_<YYYYmmdd_HHMMSS>.png` trong cùng thư mục: x, y, z, yaw theo thời gian và quỹ
+đạo X-Y, kèm RMS sai lệch PX4 − VINS trên từng trục. Yaw của VINS lấy từ file
+`vins_flu_odom`. `--relative` trừ vị trí đầu của từng nguồn, dùng khi hai gốc tọa
 độ lệch nhau (ví dụ z của PX4 lấy từ baro).
+
+Nếu thư mục có `gps_raw` với mẫu đã fix, hình có thêm đường GPS raw và RMS GPS − VINS,
+GPS − PX4. Hệ trục GPS / UWB (đông/bắc từ gốc riêng) không trùng hệ world của VINS (yaw ban
+đầu tùy ý), nên script xoay + tịnh tiến quỹ đạo X-Y của GPS cho khớp VINS (bình phương tối
+thiểu trên khoảng thời gian chung, không co giãn; z chỉ trừ offset) và in góc yaw đã xoay.
+RMS của GPS vì vậy là sai lệch còn lại sau khi khớp. Quỹ đạo phải dài ít nhất ~0,3 m mới
+tính được góc xoay. `--no-gps-align` vẽ GPS không khớp.
 
 Vẽ riêng một file:
 
 ```bash
-python3 scripts/plot_odometry.py output/odom_logs/<YYYYmmdd_HHMMSS>/fc_odom.csv
+python3 scripts/plot_odometry.py output/odom_logs/<YYYYmmdd_HHMMSS>/fc_odom_<YYYYmmdd_HHMMSS>.csv
 ```
 
 ## 11. Ghi rosbag
@@ -826,7 +866,7 @@ Chạy trên host Jetson; mở tmux với 4 pane Camera, VINS, MAVROS và bridge
 
 ```bash
 cd ~/huy/vins_fusion_d435i
-./scripts/run.sh px4                              # FC qua GPIO UART /dev/ttyTHS1:921600
+./scripts/run.sh px4                              # FC qua USB-TTL CP2102, 921600 (mặc định)
 ./scripts/run.sh px4 --fcu /dev/ttyACM0:921600    # PX4 qua USB native
 ./scripts/run.sh px4 --reset                      # reset D435i khi khởi động (sau lỗi USB)
 ./scripts/run.sh record                           # camera RGB+IR+IMU + VINS + ghi bag

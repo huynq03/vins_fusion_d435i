@@ -15,7 +15,7 @@ Modes:
   stop     stop all nodes (Ctrl+C semantics, bag is finalized) and close tmux
 
 Options:
-  --fcu URL     MAVROS FCU URL (default: /dev/ttyTHS1:921600, env FCU_URL)
+  --fcu URL     MAVROS FCU URL (default: CP2102 USB-TTL adapter at 921600, env FCU_URL)
   --reset       reset the D435i once when the camera node starts
   --dry-run     print the pane commands only
 
@@ -27,7 +27,9 @@ CONTAINER="vins_d435i_compose"
 SESSION="vins"
 WS="/home/air/vins_fusion_d435i_local"
 CALIB="$WS/bags/realsense_d435i_kalibr_183222"
-FCU_URL="${FCU_URL:-/dev/ttyTHS1:921600}"
+# The FC (TELEM1) is reached through a CP2102 USB-TTL adapter. The GPIO UART /dev/ttyTHS1
+# drops about half of the Jetson -> FC frames at 921600, so it is not the default.
+FCU_URL="${FCU_URL:-/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0:921600}"
 RESET=false
 DRY_RUN=false
 
@@ -93,12 +95,16 @@ case "$MODE" in
     record) PANES=(CAMERA VINS RECORD) ;;
     stop)
         # SIGINT lets rosbag write its index and roslaunch shut nodes down cleanly.
-        in_container pkill -INT -f 'rosbag/record|record_odom_csv.py|vins_node|roslaunch' || true
+        # The odometry recorder goes first: it still needs MAVROS to stop the FC log.
+        in_container pkill -INT -f 'record_odom_csv.py' && sleep 3 || true
+        in_container pkill -INT -f 'rosbag/record|vins_node|roslaunch' || true
         sleep 5
         tmux kill-session -t "$SESSION" 2>/dev/null || true
         # From the host, closing tmux only ends the `docker exec` clients; the pane shells
         # keep running in the container and would start nodes again on the next master.
         in_container pkill -KILL -f '^bash -c source /opt/ros/noetic/setup.bash' || true
+        # record_odom.sh still waiting for a master (once recording it is the python process above).
+        in_container pkill -KILL -f "$WS/scripts/record_odom.sh" || true
         in_container pkill -INT -f 'rosmaster|roscore' || true
         echo "Stopped."
         exit 0 ;;

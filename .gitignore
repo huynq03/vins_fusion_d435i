@@ -8,7 +8,10 @@
 # Runtime output
 
 /bags/
-/output/
+/output/*
+# Odometry CSV logs and their comparison plots are kept in git.
+!/output/odom_logs/
+/output/odom_logs/_*/
 *.bag
 *.bag.active
 

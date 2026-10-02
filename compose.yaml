@@ -30,3 +30,6 @@ services:
       - ./third_party/librealsense/install:/opt/librealsense
       - /dev:/dev
       - /run/udev:/run/udev:ro
+      # Host time zone, so date-stamped bag/CSV names use local time instead of UTC.
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
